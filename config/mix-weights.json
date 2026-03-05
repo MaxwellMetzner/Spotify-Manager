@@ -1,0 +1,13 @@
+{
+  "bpm": 0.24,
+  "camelot": 0.24,
+  "energy": 0.12,
+  "danceability": 0.1,
+  "valence": 0.07,
+  "loudness": 0.06,
+  "instrumentalness": 0.05,
+  "acousticness": 0.04,
+  "speechiness": 0.03,
+  "liveness": 0.02,
+  "genre": 0.03
+}

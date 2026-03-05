@@ -1,0 +1,21 @@
+{
+  "name": "spotify-manager",
+  "version": "0.1.0",
+  "description": "Electron app for advanced Spotify playlist management",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test Agents/test-analysis.mjs"
+  },
+  "keywords": [
+    "spotify",
+    "electron",
+    "playlist",
+    "mix-assist"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^37.0.0"
+  }
+}

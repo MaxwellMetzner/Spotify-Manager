@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spotify Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="background-glow"></div>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>Spotify Manager</h1>
+          <p>Advanced playlist workflows</p>
+        </div>
+
+        <div class="auth-block">
+          <button id="loginBtn" class="btn btn-primary">Sign In With Spotify</button>
+          <button id="logoutBtn" class="btn btn-ghost">Sign Out</button>
+          <div id="authStatus" class="status">Disconnected</div>
+          <div id="userLabel" class="subtle"></div>
+        </div>
+
+        <div class="playlist-block">
+          <div class="row-between">
+            <h2>Playlists</h2>
+            <button id="refreshPlaylistsBtn" class="btn btn-small">Refresh</button>
+          </div>
+          <ul id="playlistList" class="playlist-list"></ul>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <section class="hero-card">
+          <div>
+            <h2 id="playlistTitle">Select a playlist</h2>
+            <p id="playlistMeta" class="subtle">Browse all metadata and run advanced tools.</p>
+          </div>
+          <div class="hero-actions">
+            <button id="reloadPlaylistBtn" class="btn btn-small">Reload Playlist</button>
+            <button id="saveOrderBtn" class="btn btn-primary">Save Current Order To Spotify</button>
+          </div>
+        </section>
+
+        <section class="tools-grid">
+          <div class="tool-card">
+            <h3>Deduplication</h3>
+            <p>Exact duplicates auto-resolved. Near duplicates (e.g. remix/edits) are reviewed.</p>
+            <div class="tool-actions">
+              <button id="analyzeDuplicatesBtn" class="btn btn-small">Analyze Duplicates</button>
+              <button id="applyExactDedupeBtn" class="btn btn-small">Apply Exact Dedupe</button>
+              <button id="resolveNearDuplicatesBtn" class="btn btn-small">Resolve Near Duplicates</button>
+            </div>
+          </div>
+
+          <div class="tool-card">
+            <h3>Shuffle</h3>
+            <p>Run one or many shuffle passes to change custom order.</p>
+            <div class="inline-controls">
+              <label for="shufflePasses">Passes</label>
+              <input id="shufflePasses" type="number" min="1" value="1" />
+              <button id="shuffleBtn" class="btn btn-small">Shuffle</button>
+            </div>
+          </div>
+
+          <div class="tool-card">
+            <h3>Mix Assist</h3>
+            <p>Reorder songs for smoother transitions (BPM, Camelot, energy, mood, genre).</p>
+            <textarea id="weightsInput" class="weights-input" spellcheck="false"></textarea>
+            <div class="inline-controls presets-row">
+              <input id="weightPresetName" type="text" placeholder="Weight preset name" />
+              <button id="saveWeightPresetBtn" class="btn btn-small">Save Weights Preset</button>
+            </div>
+            <div class="inline-controls presets-row">
+              <select id="weightPresetSelect"></select>
+              <button id="loadWeightPresetBtn" class="btn btn-small">Load</button>
+              <button id="deleteWeightPresetBtn" class="btn btn-small">Delete</button>
+            </div>
+            <button id="mixAssistBtn" class="btn btn-small">Apply Mix Assist</button>
+          </div>
+
+          <div class="tool-card">
+            <h3>Outliers</h3>
+            <p>Detect tracks that differ from playlist norms by genre, era, and audio profile.</p>
+            <button id="outliersBtn" class="btn btn-small">Detect Outliers</button>
+            <div id="outliersResult" class="results"></div>
+          </div>
+        </section>
+
+        <section class="filter-card">
+          <div class="row-between">
+            <h3>Filter To New Playlist</h3>
+            <div class="inline-controls">
+              <input id="newPlaylistName" type="text" placeholder="New playlist name" />
+              <button id="createFilteredPlaylistBtn" class="btn btn-primary">Create Playlist From Filter</button>
+            </div>
+          </div>
+
+          <div class="filter-grid">
+            <label>Title Contains <input id="filterTitle" type="text" placeholder="summer" /></label>
+            <label>Artist Contains <input id="filterArtist" type="text" placeholder="drake" /></label>
+            <label>Genre Contains <input id="filterGenre" type="text" placeholder="house" /></label>
+            <label>Year Min <input id="filterYearMin" type="number" placeholder="2015" /></label>
+            <label>Year Max <input id="filterYearMax" type="number" placeholder="2016" /></label>
+            <label>BPM Min <input id="filterBpmMin" type="number" step="0.1" /></label>
+            <label>BPM Max <input id="filterBpmMax" type="number" step="0.1" /></label>
+            <label>Energy Min <input id="filterEnergyMin" type="number" step="0.01" min="0" max="1" /></label>
+            <label>Energy Max <input id="filterEnergyMax" type="number" step="0.01" min="0" max="1" /></label>
+            <label>Danceability Min <input id="filterDanceMin" type="number" step="0.01" min="0" max="1" /></label>
+            <label>Danceability Max <input id="filterDanceMax" type="number" step="0.01" min="0" max="1" /></label>
+            <label>Valence Min <input id="filterValenceMin" type="number" step="0.01" min="0" max="1" /></label>
+            <label>Valence Max <input id="filterValenceMax" type="number" step="0.01" min="0" max="1" /></label>
+          </div>
+
+          <div class="row-between">
+            <div class="inline-controls">
+              <label for="sortField">Sort By</label>
+              <select id="sortField"></select>
+              <select id="sortDir">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+              <button id="sortBtn" class="btn btn-small">Sort</button>
+              <button id="resetOrderBtn" class="btn btn-small">Reset To Spotify Order</button>
+            </div>
+            <div id="filterCount" class="status">Filtered tracks: 0</div>
+          </div>
+
+          <div class="inline-controls presets-row">
+            <input id="filterPresetName" type="text" placeholder="Filter preset name" />
+            <button id="saveFilterPresetBtn" class="btn btn-small">Save Filter Preset</button>
+            <select id="filterPresetSelect"></select>
+            <button id="loadFilterPresetBtn" class="btn btn-small">Load</button>
+            <button id="deleteFilterPresetBtn" class="btn btn-small">Delete</button>
+          </div>
+        </section>
+
+        <section class="table-card">
+          <div id="messages" class="status"></div>
+          <div id="virtualizationHint" class="status"></div>
+          <div id="tracksTableWrap" class="table-wrap">
+            <table id="tracksTable">
+              <thead>
+                <tr id="tracksHeadRow"></tr>
+              </thead>
+              <tbody id="tracksTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="table-card">
+          <h3>Duplicate Review</h3>
+          <div id="dedupeResults" class="results"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="nearDuplicateModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="nearDupTitle">
+      <div class="modal">
+        <div class="row-between">
+          <h3 id="nearDupTitle">Resolve Near Duplicates</h3>
+          <button id="closeNearDuplicateModalBtn" class="btn btn-small">Close</button>
+        </div>
+        <p class="subtle">For each group, uncheck versions you want to remove. Keep one or many.</p>
+        <div id="nearDuplicateGroups" class="modal-scroll"></div>
+        <div class="inline-controls">
+          <button id="applyNearDuplicateChoicesBtn" class="btn btn-primary">Apply Choices</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="../shared/analysis.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
