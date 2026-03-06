@@ -1,21 +1,20 @@
 {
   "name": "spotify-manager",
-  "version": "0.1.0",
-  "description": "Electron app for advanced Spotify playlist management",
-  "main": "main.js",
+  "version": "0.2.0",
+  "description": "Web app for advanced Spotify playlist management",
   "scripts": {
-    "start": "electron .",
-    "test": "node --test Agents/test-analysis.mjs"
+    "start": "npx serve . -l 3000",
+    "test": "node --test Agents/test-analysis.mjs Agents/test-auth.mjs Agents/test-spotifyApi.mjs"
   },
   "keywords": [
     "spotify",
-    "electron",
+    "webapp",
     "playlist",
     "mix-assist"
   ],
   "author": "",
   "license": "MIT",
-  "devDependencies": {
-    "electron": "^37.0.0"
+  "dependencies": {
+    "tabulator-tables": "^6.3.1"
   }
 }

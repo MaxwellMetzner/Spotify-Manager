@@ -7,6 +7,8 @@ const {
   logout,
   spotifyRequest,
   loadCurrentUser,
+  getSetupState,
+  writeSetupEnv,
 } = require('./src/main/auth');
 const {
   fetchCurrentUserPlaylists,
@@ -15,14 +17,28 @@ const {
   createPlaylistFromTracks,
 } = require('./src/main/spotifyApi');
 
+const DEBUG_ENABLED = process.env.SPOTIFY_MANAGER_DEBUG === '1';
+
+function dlog(event, payload) {
+  if (!DEBUG_ENABLED) return;
+  const stamp = new Date().toISOString();
+  if (payload === undefined) {
+    console.log(`[Main][${stamp}] ${event}`);
+    return;
+  }
+  console.log(`[Main][${stamp}] ${event}`, payload);
+}
+
 let mainWindow;
 
 function createWindow() {
+  dlog('createWindow');
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 900,
     minWidth: 1200,
     minHeight: 760,
+    fullscreen: true,
     backgroundColor: '#0d1f22',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -43,14 +59,31 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  ipcMain.handle('auth:state', async () => getAuthState());
+  ipcMain.handle('auth:state', async () => {
+    dlog('ipc:auth:state');
+    return getAuthState();
+  });
+
+  ipcMain.handle('setup:state', async () => getSetupState());
+
+  ipcMain.handle('setup:write-env', async (_, payload) => {
+    return writeSetupEnv(payload || {});
+  });
+
+  ipcMain.handle('system:open-external', async (_, url) => {
+    if (!url) return false;
+    await shell.openExternal(url);
+    return true;
+  });
 
   ipcMain.handle('auth:login', async () => {
+    dlog('ipc:auth:login');
     await beginSpotifyLogin();
     return getAuthState();
   });
 
   ipcMain.handle('auth:logout', async () => {
+    dlog('ipc:auth:logout');
     logout();
     return getAuthState();
   });
@@ -61,6 +94,16 @@ app.whenReady().then(() => {
 
   ipcMain.handle('spotify:playlist-details', async (_, playlistId) => {
     return fetchPlaylistWithMetadata(playlistId);
+  });
+
+  ipcMain.handle('spotify:playlist-details-with-progress', async (event, playlistId) => {
+    dlog('ipc:spotify:playlist-details-with-progress', { playlistId });
+    return fetchPlaylistWithMetadata(playlistId, (progress) => {
+      event.sender.send('spotify:playlist-progress', {
+        playlistId,
+        ...progress,
+      });
+    });
   });
 
   ipcMain.handle('spotify:reorder-playlist', async (_, payload) => {

@@ -91,6 +91,21 @@ test('applyFilters supports contains, ranges, and year filters', () => {
   assert.equal(filtered[0].title, 'Summer Heat');
 });
 
+test('applyFilters supports set and negate qualifiers', () => {
+  const tracks = [
+    makeTrack({ title: 'Set A', camelot: '8A', timeSignature: 4 }),
+    makeTrack({ title: 'Set B', camelot: '9A', timeSignature: 3 }),
+    makeTrack({ title: 'Set C', camelot: '8B', timeSignature: 4 }),
+  ];
+
+  const filtered = analysis.applyFilters(tracks, [
+    { field: 'camelot', kind: 'set', values: ['8A', '8B'] },
+    { field: 'timeSignature', kind: 'set', values: ['4'], negate: true },
+  ]);
+
+  assert.equal(filtered.length, 0);
+});
+
 test('detectOutliers ranks unusual item higher', () => {
   const normal = Array.from({ length: 8 }).map((_, index) =>
     makeTrack({
@@ -113,4 +128,61 @@ test('detectOutliers ranks unusual item higher', () => {
   const ranked = analysis.detectOutliers([...normal, outlier]);
   assert.equal(ranked[0].track.title, 'Old Slow Jazz');
   assert.equal(typeof ranked[0].outlierScore, 'number');
+});
+
+test('duplicatePairScore rewards closer duplicate candidates', () => {
+  const original = makeTrack({
+    title: 'Example Song',
+    durationSeconds: 180,
+    isrc: 'USABC123',
+    popularity: 70,
+  });
+  const close = makeTrack({
+    title: 'Example Song (Remix)',
+    durationSeconds: 182,
+    isrc: 'USABC123',
+    popularity: 68,
+  });
+  const far = makeTrack({
+    title: 'Totally Different',
+    durationSeconds: 260,
+    isrc: 'ZZZZ9999',
+    popularity: 10,
+  });
+
+  const closeScore = analysis.duplicatePairScore(original, close);
+  const farScore = analysis.duplicatePairScore(original, far);
+  assert.equal(closeScore > farScore, true);
+});
+
+test('sequenceGenreClusters preserves track set', () => {
+  const tracks = [
+    makeTrack({ title: 'House 1', genres: ['house'], bpm: 124 }),
+    makeTrack({ title: 'House 2', genres: ['house'], bpm: 126 }),
+    makeTrack({ title: 'Hip Hop 1', genres: ['hip hop'], bpm: 92 }),
+    makeTrack({ title: 'Hip Hop 2', genres: ['hip hop'], bpm: 95 }),
+  ];
+
+  const sequenced = analysis.sequenceGenreClusters(tracks, { mode: 'club-flow', weights: {} });
+  assert.equal(sequenced.length, tracks.length);
+  assert.deepEqual(
+    [...sequenced.map((item) => item.title)].sort(),
+    [...tracks.map((item) => item.title)].sort()
+  );
+});
+
+test('computeTransitionDiagnostics returns adjacency metrics', () => {
+  const tracks = [
+    makeTrack({ title: 'A', bpm: 110, camelot: '8A' }),
+    makeTrack({ title: 'B', bpm: 114, camelot: '8B' }),
+    makeTrack({ title: 'C', bpm: 128, camelot: '10A' }),
+  ];
+
+  const diagnostics = analysis.computeTransitionDiagnostics(tracks, {
+    mode: 'balanced',
+    weights: {},
+  });
+  assert.equal(diagnostics.length, 2);
+  assert.equal(typeof diagnostics[0].score, 'number');
+  assert.equal(typeof diagnostics[0].camelotDistance, 'number');
 });

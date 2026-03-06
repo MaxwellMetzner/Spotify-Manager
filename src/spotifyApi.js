@@ -1,16 +1,9 @@
-const { spotifyRequest } = require('./auth');
+/**
+ * Browser-compatible Spotify API layer.
+ * Replaces the Electron main-process spotifyApi module.
+ */
 
-const DEBUG_ENABLED = process.env.SPOTIFY_MANAGER_DEBUG === '1';
-
-function dlog(event, payload) {
-  if (!DEBUG_ENABLED) return;
-  const stamp = new Date().toISOString();
-  if (payload === undefined) {
-    console.log(`[SpotifyApi][${stamp}] ${event}`);
-    return;
-  }
-  console.log(`[SpotifyApi][${stamp}] ${event}`, payload);
-}
+import { spotifyRequest } from './auth.js';
 
 function chunk(items, size) {
   const result = [];
@@ -34,17 +27,15 @@ function parseYearFromDate(rawDate) {
   return match ? Number(match[0]) : null;
 }
 
-async function fetchCurrentUserPlaylists() {
-  dlog('fetchCurrentUserPlaylists:start');
+// --------------- Playlists ---------------
+
+export async function fetchCurrentUserPlaylists() {
   let offset = 0;
   const limit = 50;
   const allItems = [];
 
   while (true) {
-    const page = await spotifyRequest('GET', '/me/playlists', {
-      limit,
-      offset,
-    });
+    const page = await spotifyRequest('GET', '/me/playlists', { limit, offset });
     allItems.push(...(page.items || []));
     offset += limit;
     if (!page.next) break;
@@ -52,7 +43,6 @@ async function fetchCurrentUserPlaylists() {
 
   const mapped = allItems
     .filter((playlist) => {
-      // Guard against folder-like or non-playlist items from client-integrated views.
       const looksLikePlaylist =
         (playlist?.type === 'playlist' || Boolean(playlist?.id)) &&
         typeof playlist?.name === 'string';
@@ -72,7 +62,6 @@ async function fetchCurrentUserPlaylists() {
       canLoad: Boolean(playlist.id),
     }));
 
-  // Some API responses may omit totals; if everything looks zero, hydrate totals directly.
   if (mapped.length && mapped.every((item) => item.totalTracks === 0 && item.canLoad)) {
     const hydrated = await Promise.all(
       mapped.map(async (item) => {
@@ -80,10 +69,7 @@ async function fetchCurrentUserPlaylists() {
           const details = await spotifyRequest('GET', `/playlists/${item.id}`, {
             fields: 'tracks(total)',
           });
-          return {
-            ...item,
-            totalTracks: Number(details?.tracks?.total ?? 0) || 0,
-          };
+          return { ...item, totalTracks: Number(details?.tracks?.total ?? 0) || 0 };
         } catch {
           return item;
         }
@@ -92,21 +78,18 @@ async function fetchCurrentUserPlaylists() {
     return hydrated;
   }
 
-  dlog('fetchCurrentUserPlaylists:done', { count: mapped.length });
   return mapped;
 }
+
+// --------------- Playlist Items ---------------
 
 function normalizePlaylistItem(raw) {
   const candidate = raw?.track || raw?.item;
   if (!candidate || candidate.type !== 'track') return null;
-  return {
-    ...raw,
-    track: candidate,
-  };
+  return { ...raw, track: candidate };
 }
 
 async function fetchPlaylistItems(playlistId, progressCb) {
-  dlog('fetchPlaylistItems:start', { playlistId });
   const all = [];
   let offset = 0;
   const limit = 50;
@@ -116,23 +99,15 @@ async function fetchPlaylistItems(playlistId, progressCb) {
     let page;
     try {
       page = await spotifyRequest('GET', `/playlists/${playlistId}/items`, {
-        offset,
-        limit,
-        additional_types: 'track',
+        offset, limit, additional_types: 'track',
       });
-    } catch (error) {
-      // Fallback for older behavior or compatibility issues.
+    } catch {
       page = await spotifyRequest('GET', `/playlists/${playlistId}/tracks`, {
-        offset,
-        limit,
-        additional_types: 'track',
+        offset, limit, additional_types: 'track',
       });
     }
 
-    const normalized = (page.items || [])
-      .map((item) => normalizePlaylistItem(item))
-      .filter(Boolean);
-
+    const normalized = (page.items || []).map(normalizePlaylistItem).filter(Boolean);
     all.push(...normalized);
     pageIndex += 1;
     if (typeof progressCb === 'function') {
@@ -146,13 +121,12 @@ async function fetchPlaylistItems(playlistId, progressCb) {
     offset += limit;
     if (!page.next) break;
   }
-
-  dlog('fetchPlaylistItems:done', { playlistId, items: all.length });
   return all;
 }
 
+// --------------- Audio Features ---------------
+
 async function fetchAudioFeaturesByIds(trackIds, progressCb) {
-  dlog('fetchAudioFeaturesByIds:start', { count: trackIds.length });
   const result = new Map();
   const blockedTrackIds = new Set();
   const groups = chunk(trackIds, 100);
@@ -160,69 +134,52 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
   async function fetchGroupWithFallback(ids) {
     if (!ids.length) return;
     try {
-      const response = await spotifyRequest('GET', '/audio-features', {
-        ids: ids.join(','),
-      });
+      const response = await spotifyRequest('GET', '/audio-features', { ids: ids.join(',') });
       for (const feature of response.audio_features || []) {
-        if (feature && feature.id) {
-          result.set(feature.id, feature);
-        }
+        if (feature && feature.id) result.set(feature.id, feature);
       }
       return;
     } catch (error) {
       const message = String(error?.message || error);
       const isForbidden = message.includes(' 403 ') || message.includes('status" : 403');
-      if (!isForbidden) {
-        throw error;
-      }
-
-      // Split forbidden batches recursively to isolate blocked track IDs.
+      if (!isForbidden) throw error;
       if (ids.length > 1) {
         const midpoint = Math.floor(ids.length / 2);
         await fetchGroupWithFallback(ids.slice(0, midpoint));
         await fetchGroupWithFallback(ids.slice(midpoint));
         return;
       }
-
       blockedTrackIds.add(ids[0]);
     }
   }
 
   for (let index = 0; index < groups.length; index += 1) {
-    const group = groups[index];
-    await fetchGroupWithFallback(group);
+    await fetchGroupWithFallback(groups[index]);
     if (typeof progressCb === 'function') {
       const blocked = blockedTrackIds.size;
       progressCb({
         stage: 'audio-features',
-        message:
-          blocked > 0
-            ? `Fetched audio features batch ${index + 1}/${groups.length} (${blocked} track(s) skipped due to 403).`
-            : `Fetched audio features batch ${index + 1}/${groups.length}`,
+        message: blocked > 0
+          ? `Fetched audio features batch ${index + 1}/${groups.length} (${blocked} skipped).`
+          : `Fetched audio features batch ${index + 1}/${groups.length}`,
         completedBatches: index + 1,
         totalBatches: groups.length,
         blockedTracks: blocked,
       });
     }
   }
-
-  dlog('fetchAudioFeaturesByIds:done', { resolved: result.size, total: trackIds.length });
   return result;
 }
 
+// --------------- Artist Genres ---------------
+
 async function fetchArtistsByIds(artistIds, progressCb) {
-  dlog('fetchArtistsByIds:start', { count: artistIds.length });
   const result = new Map();
   const groups = chunk(artistIds, 50);
   for (let index = 0; index < groups.length; index += 1) {
-    const group = groups[index];
-    const response = await spotifyRequest('GET', '/artists', {
-      ids: group.join(','),
-    });
+    const response = await spotifyRequest('GET', '/artists', { ids: groups[index].join(',') });
     for (const artist of response.artists || []) {
-      if (artist && artist.id) {
-        result.set(artist.id, artist);
-      }
+      if (artist && artist.id) result.set(artist.id, artist);
     }
     if (typeof progressCb === 'function') {
       progressCb({
@@ -233,16 +190,18 @@ async function fetchArtistsByIds(artistIds, progressCb) {
       });
     }
   }
-  dlog('fetchArtistsByIds:done', { resolved: result.size, total: artistIds.length });
   return result;
 }
 
-async function fetchPlaylistWithMetadata(playlistId, progressCb) {
-  dlog('fetchPlaylistWithMetadata:start', { playlistId });
+// --------------- Full Playlist with Metadata ---------------
+
+export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
   if (typeof progressCb === 'function') {
     progressCb({ stage: 'start', message: 'Loading playlist header...' });
   }
+
   const playlist = await spotifyRequest('GET', `/playlists/${playlistId}`);
+
   if (typeof progressCb === 'function') {
     progressCb({
       stage: 'playlist-header',
@@ -250,6 +209,7 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
       totalTracks: playlist?.tracks?.total ?? null,
     });
   }
+
   const items = await fetchPlaylistItems(playlistId, progressCb);
 
   const tracks = items
@@ -259,10 +219,7 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
   const trackIds = tracks.map(({ item }) => item.track.id);
   const artistIds = Array.from(
     new Set(
-      tracks
-        .flatMap(({ item }) => item.track.artists || [])
-        .map((artist) => artist.id)
-        .filter(Boolean)
+      tracks.flatMap(({ item }) => item.track.artists || []).map((a) => a.id).filter(Boolean)
     )
   );
 
@@ -281,23 +238,8 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
     fetchArtistsByIds(artistIds, progressCb),
   ]);
 
-  if (audioFeaturesResult.status === 'fulfilled') {
-    audioFeaturesMap = audioFeaturesResult.value;
-  } else if (typeof progressCb === 'function') {
-    progressCb({
-      stage: 'audio-features-warning',
-      message: 'Audio features partially unavailable. Continuing with available playlist metadata.',
-    });
-  }
-
-  if (artistsResult.status === 'fulfilled') {
-    artistsMap = artistsResult.value;
-  } else if (typeof progressCb === 'function') {
-    progressCb({
-      stage: 'artist-warning',
-      message: 'Artist genre metadata partially unavailable. Continuing with available track metadata.',
-    });
-  }
+  if (audioFeaturesResult.status === 'fulfilled') audioFeaturesMap = audioFeaturesResult.value;
+  if (artistsResult.status === 'fulfilled') artistsMap = artistsResult.value;
 
   const hydratedTracks = tracks.map(({ item, index }) => {
     const track = item.track;
@@ -314,14 +256,12 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
 
     const releaseDate = album.release_date || null;
     const releaseYear = parseYearFromDate(releaseDate);
-    const addedAt = item.added_at || null;
-    const primaryArtist = artistNames[0] || '';
     const camelot = toCamelot(features.key, features.mode);
 
     return {
       customOrder: index,
       playlistItemId: item.id || null,
-      addedAt,
+      addedAt: item.added_at || null,
       addedBy: item.added_by?.id || null,
       isLocal: Boolean(item.is_local),
       trackId: track.id,
@@ -329,8 +269,8 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
       title: track.name,
       artists: artistNames,
       artistDisplay: artistNames.join(', '),
-      primaryArtist,
-      artistIds: (track.artists || []).map((artist) => artist.id).filter(Boolean),
+      primaryArtist: artistNames[0] || '',
+      artistIds: (track.artists || []).map((a) => a.id).filter(Boolean),
       albumId: album.id || null,
       albumName: album.name || null,
       albumType: album.album_type || null,
@@ -343,9 +283,7 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
       explicit: Boolean(track.explicit),
       popularity: track.popularity ?? null,
       isrc: track.external_ids?.isrc || null,
-      availableMarketsCount: Array.isArray(track.available_markets)
-        ? track.available_markets.length
-        : null,
+      availableMarketsCount: Array.isArray(track.available_markets) ? track.available_markets.length : null,
       previewUrl: track.preview_url || null,
       linkedFromId: track.linked_from?.id || null,
       genres: artistGenres,
@@ -370,6 +308,7 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
       timeSignature: features.time_signature ?? null,
       analysisUrl: features.analysis_url || null,
       analysisAvailable: Boolean(features.analysis_url),
+      recordLabel: null,
       metadataSource: {
         track: true,
         playlistItem: true,
@@ -405,13 +344,12 @@ async function fetchPlaylistWithMetadata(playlistId, progressCb) {
     });
   }
 
-  dlog('fetchPlaylistWithMetadata:done', { playlistId, tracks: hydratedTracks.length });
   return result;
 }
 
-async function reorderPlaylist(playlistId, trackUris) {
-  dlog('reorderPlaylist:start', { playlistId, tracks: trackUris?.length || 0 });
-  // Replace playlist with the new order in chunks of 100 items.
+// --------------- Playlist Mutations ---------------
+
+export async function reorderPlaylist(playlistId, trackUris) {
   const chunks = chunk(trackUris, 100);
   const first = chunks[0] || [];
   const response = await spotifyRequest('PUT', `/playlists/${playlistId}/tracks`, {}, { uris: first });
@@ -421,12 +359,10 @@ async function reorderPlaylist(playlistId, trackUris) {
     await spotifyRequest('POST', `/playlists/${playlistId}/tracks`, {}, { uris: chunks[index] });
   }
 
-  dlog('reorderPlaylist:done', { playlistId, snapshotId });
   return { snapshotId };
 }
 
-async function createPlaylistFromTracks(payload) {
-  dlog('createPlaylistFromTracks:start', { name: payload?.name, tracks: payload?.trackUris?.length || 0 });
+export async function createPlaylistFromTracks(payload) {
   const me = await spotifyRequest('GET', '/me');
   const createBody = {
     name: payload.name,
@@ -440,18 +376,9 @@ async function createPlaylistFromTracks(payload) {
     await spotifyRequest('POST', `/playlists/${created.id}/tracks`, {}, { uris: uriChunk });
   }
 
-  const result = {
+  return {
     id: created.id,
     url: created.external_urls?.spotify || null,
     name: created.name,
   };
-  dlog('createPlaylistFromTracks:done', result);
-  return result;
 }
-
-module.exports = {
-  fetchCurrentUserPlaylists,
-  fetchPlaylistWithMetadata,
-  reorderPlaylist,
-  createPlaylistFromTracks,
-};

@@ -10,8 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../../node_modules/tabulator-tables/dist/css/tabulator_midnight.min.css" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="node_modules/tabulator-tables/dist/css/tabulator_midnight.min.css" />
+    <link rel="stylesheet" href="src/renderer/styles.css" />
   </head>
   <body>
     <div class="background-glow"></div>
@@ -25,9 +25,9 @@
         <div class="auth-block">
           <button id="loginBtn" class="btn btn-primary">Sign In With Spotify</button>
           <button id="logoutBtn" class="btn btn-ghost">Sign Out</button>
-          <button id="openSetupWizardBtn" class="btn btn-small">Setup / Repair Spotify Config</button>
+          <button id="openSetupWizardBtn" class="btn btn-small hidden">Setup Spotify Client ID</button>
           <div id="setupStatus" class="status"></div>
-          <div id="authStatus" class="status">Disconnected</div>
+          <div id="authStatus" class="status">Not signed in</div>
           <div id="userLabel" class="subtle"></div>
         </div>
 
@@ -69,9 +69,7 @@
             <label>Title <input id="filterTitle" type="text" placeholder="title" /></label>
             <label>Artist <input id="filterArtist" type="text" placeholder="artist" /></label>
             <label>Year <input id="filterYearMin" type="number" placeholder="min" /><input id="filterYearMax" type="number" placeholder="max" /></label>
-            <label>Duration (ms) <input id="filterDurationMsMin" type="number" step="1" placeholder="min" /><input id="filterDurationMsMax" type="number" step="1" placeholder="max" /></label>
             <label>BPM <input id="filterBpmMin" type="number" step="0.1" placeholder="min" /><input id="filterBpmMax" type="number" step="0.1" placeholder="max" /></label>
-            <label>Tempo <input id="filterTempoMin" type="number" step="0.1" placeholder="min" /><input id="filterTempoMax" type="number" step="0.1" placeholder="max" /></label>
             <label>Camelot <input id="filterCamelot" type="text" placeholder="8A" /></label>
             <label>Energy <input id="filterEnergyMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterEnergyMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
             <label>Danceability <input id="filterDanceMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterDanceMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
@@ -154,7 +152,7 @@
                   <button id="deleteWeightPresetBtn" class="btn btn-small">Delete</button>
                 </div>
               </div>
-              <div class="ribbon-group wide transition-group">
+              <div class="ribbon-group">
                 <h4>Transition Details</h4>
                 <div class="inline-controls">
                   <button id="refreshTransitionsBtn" class="btn btn-small">Refresh</button>
@@ -188,6 +186,7 @@
       </main>
     </div>
 
+    <!-- Modals -->
     <div id="nearDuplicateModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="nearDupTitle">
       <div class="modal">
         <div class="row-between">
@@ -248,10 +247,8 @@
 
     <div id="headerFilterPopup" class="header-filter-popup hidden" role="dialog" aria-modal="false">
       <div id="headerFilterTitle" class="subtle">Set filter</div>
-      <label class="popup-toggle"><input id="headerFilterNot" type="checkbox" /> Exclude matches (NOT)</label>
       <label class="popup-field" id="headerFilterMinRow"><span>Min</span><input id="headerFilterMin" type="text" /></label>
       <label class="popup-field" id="headerFilterMaxRow"><span>Max</span><input id="headerFilterMax" type="text" /></label>
-      <div id="headerFilterSetRow" class="popup-set-row hidden"></div>
       <div class="inline-controls">
         <button id="headerFilterApplyBtn" class="btn btn-small">Apply</button>
         <button id="headerFilterClearBtn" class="btn btn-small">Clear</button>
@@ -282,10 +279,6 @@
           <h3 id="columnPickerTitle">Columns</h3>
           <button id="closeColumnPickerModalBtn" class="btn btn-small">Close</button>
         </div>
-        <div class="inline-controls">
-          <button id="selectAllColumnsBtn" class="btn btn-small">Select All</button>
-          <button id="deselectAllColumnsBtn" class="btn btn-small">Deselect All</button>
-        </div>
         <div id="columnControls" class="column-controls"></div>
       </div>
     </div>
@@ -306,8 +299,8 @@
       </div>
     </div>
 
-    <script src="../../node_modules/tabulator-tables/dist/js/tabulator.min.js"></script>
-    <script src="../shared/analysis.js"></script>
-    <script src="app.js"></script>
+    <script src="node_modules/tabulator-tables/dist/js/tabulator.min.js"></script>
+    <script src="src/shared/analysis.js"></script>
+    <script type="module" src="src/renderer/app.js"></script>
   </body>
 </html>

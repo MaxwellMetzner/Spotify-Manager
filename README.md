@@ -4,18 +4,37 @@ Spotify Manager is a desktop Electron app for advanced playlist editing and anal
 
 ## What it does
 
+- First-run setup wizard walks through Spotify app creation and can generate `.env` automatically.
 - Sign in with Spotify using OAuth Authorization Code + PKCE.
 - Browse your playlist library.
 - Load playlist tracks with expanded metadata, including:
-  - Track details: title, artists, album, explicit, popularity, duration, ISRC, added at.
+  - Track details: title, artists, album, explicit, popularity, duration, added at.
   - Audio feature details: tempo/BPM, key, mode, danceability, energy, valence, loudness, acousticness, instrumentalness, speechiness, liveness, time signature.
   - Derived fields: Camelot key, release year, genre tags from artists, custom order index.
-- Sort by any metadata field, including custom order.
+- Sort directly in-table by clicking column headers.
+- Right-click headers for quick filters; active filters are shown as chips.
+- Resize and reorder columns in the table.
+- Select row(s) and remove songs from the working playlist view.
 - Deduplicate exact duplicates and review near duplicates.
+- Smart near-duplicate scoring and recommended keep candidate ranking.
 - Shuffle tracks one or more passes.
 - Mix Assist ordering with configurable weights in `config/mix-weights.json`.
+- Multi-objective mix modes (`balanced`, `club-flow`, `energy-ramp`, `chill-arc`) and genre sequencing.
 - Outlier detection with explainable score based on audio profile, era deviation, and genre rarity.
 - Filter tracks by metadata and create a new playlist from filtered results.
+- Undo/redo action history.
+- Transition diagnostics for adjacent tracks in current order (Mix tab).
+- Bulk operations across selected playlists:
+  - `Mix Assist Copy`: creates a new playlist per selected source playlist, ordered by current mix settings.
+  - `Filtered Copy`: creates a new playlist per selected source playlist using current filters.
+
+## Metadata expectations
+
+- Spotify developer access is required to authenticate and create/export playlists.
+- Spotify's current API responses may not include all historical metadata fields consistently for every track.
+- For richer metadata workflows (for example CSV imports produced by Exportify), use:
+  - `https://exportify.net/` to export playlist CSVs.
+  - The app's CSV import to load that metadata into the local workflow.
 
 ## Spotify API research notes
 
@@ -70,3 +89,4 @@ Tests are located in `Agents/test-analysis.mjs` per project instruction.
 
 - Spotify may return null for some audio fields on certain tracks.
 - This project is local-first; no backend server is required.
+- Export creates a new playlist in Spotify using the current visible table order.

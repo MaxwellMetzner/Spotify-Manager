@@ -7,6 +7,7 @@ const { shell } = require('electron');
 const AUTH_BASE = 'https://accounts.spotify.com';
 const API_BASE = 'https://api.spotify.com/v1';
 const TOKENS_FILE = path.resolve(process.cwd(), '.spotify-tokens.json');
+const ENV_FILE = path.resolve(process.cwd(), '.env');
 const DEFAULT_REDIRECT_URI = 'http://127.0.0.1:8888/callback';
 const SCOPES = [
   'playlist-read-private',
@@ -25,10 +26,9 @@ const tokenState = {
 loadTokens();
 
 function parseEnvFile() {
-  const envPath = path.resolve(process.cwd(), '.env');
   const result = {};
-  if (!fs.existsSync(envPath)) return result;
-  const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
+  if (!fs.existsSync(ENV_FILE)) return result;
+  const lines = fs.readFileSync(ENV_FILE, 'utf-8').split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
@@ -46,6 +46,38 @@ function getConfig() {
     throw new Error('Missing SPOTIFY_CLIENT_ID. Add it to .env or environment variables.');
   }
   return { clientId, redirectUri };
+}
+
+function getSetupState() {
+  const envFile = parseEnvFile();
+  const clientId = process.env.SPOTIFY_CLIENT_ID || envFile.SPOTIFY_CLIENT_ID || '';
+  const redirectUri = process.env.SPOTIFY_REDIRECT_URI || envFile.SPOTIFY_REDIRECT_URI || DEFAULT_REDIRECT_URI;
+  return {
+    envExists: fs.existsSync(ENV_FILE),
+    hasClientId: Boolean(clientId),
+    clientIdMasked: clientId ? `${clientId.slice(0, 4)}...${clientId.slice(-4)}` : '',
+    redirectUri,
+    envPath: ENV_FILE,
+  };
+}
+
+function writeSetupEnv({ clientId, redirectUri }) {
+  const normalizedClientId = String(clientId || '').trim();
+  if (!normalizedClientId) {
+    throw new Error('SPOTIFY_CLIENT_ID is required.');
+  }
+  const normalizedRedirect = String(redirectUri || DEFAULT_REDIRECT_URI).trim() || DEFAULT_REDIRECT_URI;
+  const envFile = parseEnvFile();
+  envFile.SPOTIFY_CLIENT_ID = normalizedClientId;
+  envFile.SPOTIFY_REDIRECT_URI = normalizedRedirect;
+
+  const lines = [
+    '# Spotify Manager generated configuration',
+    `SPOTIFY_CLIENT_ID=${envFile.SPOTIFY_CLIENT_ID}`,
+    `SPOTIFY_REDIRECT_URI=${envFile.SPOTIFY_REDIRECT_URI}`,
+  ];
+  fs.writeFileSync(ENV_FILE, `${lines.join('\n')}\n`, 'utf-8');
+  return getSetupState();
 }
 
 function loadTokens() {
@@ -259,7 +291,7 @@ async function spotifyRequest(method, endpointPath, query = {}, body = undefined
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Spotify API ${response.status}: ${text}`);
+    throw new Error(`Spotify API ${response.status} ${method} ${url.pathname}: ${text}`);
   }
 
   if (response.status === 204) return null;
@@ -286,4 +318,6 @@ module.exports = {
   spotifyRequest,
   loadCurrentUser,
   logout,
+  getSetupState,
+  writeSetupEnv,
 };
