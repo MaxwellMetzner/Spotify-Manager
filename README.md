@@ -1,3 +1,9 @@
+# IMPORTANT: Spotify Export Blocked
+
+> NOTE: Exporting playlists to Spotify is currently blocked by Spotify (their platform/API).
+> This is an external restriction and not caused by this app. See project issue tracker or
+> release notes for updates and recommended workarounds.
+
 # Spotify Manager (Electron)
 
 Spotify Manager is a desktop Electron app for advanced playlist editing and analysis beyond native Spotify playlist tools.
