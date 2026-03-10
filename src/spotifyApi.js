@@ -235,16 +235,9 @@ async function fetchPlaylistItems(playlistId, progressCb) {
   let pageIndex = 0;
 
   while (true) {
-    let page;
-    try {
-      page = await spotifyRequest('GET', `/playlists/${playlistId}/items`, {
-        offset, limit, additional_types: 'track',
-      });
-    } catch {
-      page = await spotifyRequest('GET', `/playlists/${playlistId}/tracks`, {
-        offset, limit, additional_types: 'track',
-      });
-    }
+    const page = await spotifyRequest('GET', `/playlists/${playlistId}/items`, {
+      offset, limit, additional_types: 'track',
+    });
 
     const normalized = (page.items || []).map(normalizePlaylistItem).filter(Boolean);
     all.push(...normalized);
@@ -519,11 +512,11 @@ export async function reorderPlaylist(playlistId, trackUris) {
   });
   const chunks = chunk(trackUris, 100);
   const first = chunks[0] || [];
-  const response = await spotifyRequest('PUT', `/playlists/${playlistId}/tracks`, {}, { uris: first });
+  const response = await spotifyRequest('PUT', `/playlists/${playlistId}/items`, {}, { uris: first });
   const snapshotId = response?.snapshot_id;
 
   for (let index = 1; index < chunks.length; index += 1) {
-    await spotifyRequest('POST', `/playlists/${playlistId}/tracks`, {}, { uris: chunks[index] });
+    await spotifyRequest('POST', `/playlists/${playlistId}/items`, {}, { uris: chunks[index] });
   }
 
   dlog('reorderPlaylist:done', {
@@ -574,7 +567,7 @@ async function addTracksChunkWithRetry(playlistId, uris, chunkIndex, totalChunks
     }
 
     try {
-      await spotifyRequest('POST', `/playlists/${playlistId}/tracks`, {}, { uris });
+      await spotifyRequest('POST', `/playlists/${playlistId}/items`, {}, { uris });
       return;
     } catch (error) {
       lastError = error;
@@ -590,7 +583,7 @@ async function addTracksChunkWithRetry(playlistId, uris, chunkIndex, totalChunks
       if (attemptIndex === 0 && isForbidden) {
         await waitForPlaylistMutationReady(playlistId);
         try {
-          await spotifyRequest('PUT', `/playlists/${playlistId}/tracks`, {}, { uris });
+          await spotifyRequest('PUT', `/playlists/${playlistId}/items`, {}, { uris });
           return;
         } catch (putError) {
           lastError = putError;
@@ -623,6 +616,6 @@ async function addTracksChunkWithRetry(playlistId, uris, chunkIndex, totalChunks
   });
 
   throw new Error(
-    `Playlist created but adding tracks failed at chunk ${chunkIndex + 1}/${totalChunks}: ${String(lastError?.message || lastError)} Diagnostics: ${diagnosticsText}. ${hint}`
+        `Playlist created but adding items failed at chunk ${chunkIndex + 1}/${totalChunks}: ${String(lastError?.message || lastError)} Diagnostics: ${diagnosticsText}. ${hint}`
   );
 }

@@ -113,21 +113,11 @@ async function fetchPlaylistItems(playlistId, progressCb) {
   let pageIndex = 0;
 
   while (true) {
-    let page;
-    try {
-      page = await spotifyRequest('GET', `/playlists/${playlistId}/items`, {
-        offset,
-        limit,
-        additional_types: 'track',
-      });
-    } catch (error) {
-      // Fallback for older behavior or compatibility issues.
-      page = await spotifyRequest('GET', `/playlists/${playlistId}/tracks`, {
-        offset,
-        limit,
-        additional_types: 'track',
-      });
-    }
+    const page = await spotifyRequest('GET', `/playlists/${playlistId}/items`, {
+      offset,
+      limit,
+      additional_types: 'track',
+    });
 
     const normalized = (page.items || [])
       .map((item) => normalizePlaylistItem(item))
@@ -414,11 +404,11 @@ async function reorderPlaylist(playlistId, trackUris) {
   // Replace playlist with the new order in chunks of 100 items.
   const chunks = chunk(trackUris, 100);
   const first = chunks[0] || [];
-  const response = await spotifyRequest('PUT', `/playlists/${playlistId}/tracks`, {}, { uris: first });
+  const response = await spotifyRequest('PUT', `/playlists/${playlistId}/items`, {}, { uris: first });
   const snapshotId = response?.snapshot_id;
 
   for (let index = 1; index < chunks.length; index += 1) {
-    await spotifyRequest('POST', `/playlists/${playlistId}/tracks`, {}, { uris: chunks[index] });
+    await spotifyRequest('POST', `/playlists/${playlistId}/items`, {}, { uris: chunks[index] });
   }
 
   dlog('reorderPlaylist:done', { playlistId, snapshotId });
@@ -434,10 +424,10 @@ async function createPlaylistFromTracks(payload) {
     public: Boolean(payload.public),
   };
 
-  const created = await spotifyRequest('POST', `/users/${me.id}/playlists`, {}, createBody);
+  const created = await spotifyRequest('POST', '/me/playlists', {}, createBody);
   const uris = payload.trackUris || [];
   for (const uriChunk of chunk(uris, 100)) {
-    await spotifyRequest('POST', `/playlists/${created.id}/tracks`, {}, { uris: uriChunk });
+    await spotifyRequest('POST', `/playlists/${created.id}/items`, {}, { uris: uriChunk });
   }
 
   const result = {

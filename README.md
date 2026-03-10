@@ -57,11 +57,11 @@ This app uses Spotify Web API and OAuth2 flows based on Spotify docs:
   - `GET /me`
   - `GET /me/playlists`
   - `GET /playlists/{playlist_id}`
-  - `GET /playlists/{playlist_id}/tracks`
+  - `GET /playlists/{playlist_id}/items`
   - `GET /audio-features?ids=...`
   - `GET /artists?ids=...`
-  - `PUT /playlists/{playlist_id}/tracks` and `POST /playlists/{playlist_id}/tracks`
-  - `POST /users/{user_id}/playlists`
+  - `PUT /playlists/{playlist_id}/items` and `POST /playlists/{playlist_id}/items`
+  - `POST /me/playlists`
 
 ## Setup
 

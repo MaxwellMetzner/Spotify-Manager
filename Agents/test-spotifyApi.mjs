@@ -204,7 +204,7 @@ test('reorderPlaylist sends PUT with track URIs', async () => {
     let capturedBody;
     globalThis.fetch = async (urlOrStr, opts) => {
       const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
-      if (url.pathname.includes('/playlists/') && opts.method === 'PUT') {
+      if (url.pathname === '/v1/playlists/pl1/items' && opts.method === 'PUT') {
         capturedBody = JSON.parse(opts.body);
         return { ok: true, status: 200, json: async () => ({ snapshot_id: 'new_snap' }) };
       }
@@ -238,7 +238,7 @@ test('createPlaylistFromTracks creates playlist and adds tracks', async () => {
           }),
         };
       }
-      if (opts.method === 'POST' && url.pathname.includes('/tracks')) {
+      if (opts.method === 'POST' && url.pathname.includes('/items')) {
         return { ok: true, status: 200, json: async () => ({ snapshot_id: 's' }) };
       }
       return { ok: true, status: 200, json: async () => ({}) };
@@ -260,7 +260,7 @@ test('createPlaylistFromTracks creates playlist and adds tracks', async () => {
   }
 });
 
-test('createPlaylistFromTracks falls back to PUT when first add-tracks POST is forbidden', async () => {
+test('createPlaylistFromTracks falls back to PUT when first add-items POST is forbidden', async () => {
   installBrowserGlobals();
   try {
     const calls = [];
@@ -280,7 +280,7 @@ test('createPlaylistFromTracks falls back to PUT when first add-tracks POST is f
         };
       }
 
-      if (opts.method === 'POST' && url.pathname === '/v1/playlists/new_pl/tracks') {
+      if (opts.method === 'POST' && url.pathname === '/v1/playlists/new_pl/items') {
         return {
           ok: false,
           status: 403,
@@ -288,7 +288,7 @@ test('createPlaylistFromTracks falls back to PUT when first add-tracks POST is f
         };
       }
 
-      if (opts.method === 'PUT' && url.pathname === '/v1/playlists/new_pl/tracks') {
+      if (opts.method === 'PUT' && url.pathname === '/v1/playlists/new_pl/items') {
         return { ok: true, status: 200, json: async () => ({ snapshot_id: 'seeded' }) };
       }
 
@@ -304,14 +304,14 @@ test('createPlaylistFromTracks falls back to PUT when first add-tracks POST is f
     });
 
     assert.equal(result.id, 'new_pl');
-    assert.ok(calls.some((c) => c.method === 'POST' && c.path === '/v1/playlists/new_pl/tracks'));
-    assert.ok(calls.some((c) => c.method === 'PUT' && c.path === '/v1/playlists/new_pl/tracks'));
+    assert.ok(calls.some((c) => c.method === 'POST' && c.path === '/v1/playlists/new_pl/items'));
+    assert.ok(calls.some((c) => c.method === 'PUT' && c.path === '/v1/playlists/new_pl/items'));
   } finally {
     cleanupBrowserGlobals();
   }
 });
 
-test('createPlaylistFromTracks retries forbidden add-tracks requests before failing', async () => {
+test('createPlaylistFromTracks retries forbidden add-items requests before failing', async () => {
   installBrowserGlobals();
   try {
     let postAttempts = 0;
@@ -338,7 +338,7 @@ test('createPlaylistFromTracks retries forbidden add-tracks requests before fail
         };
       }
 
-      if (url.pathname === '/v1/playlists/new_pl/tracks' && opts.method === 'PUT') {
+      if (url.pathname === '/v1/playlists/new_pl/items' && opts.method === 'PUT') {
         return {
           ok: false,
           status: 403,
@@ -346,7 +346,7 @@ test('createPlaylistFromTracks retries forbidden add-tracks requests before fail
         };
       }
 
-      if (url.pathname === '/v1/playlists/new_pl/tracks' && opts.method === 'POST') {
+      if (url.pathname === '/v1/playlists/new_pl/items' && opts.method === 'POST') {
         postAttempts += 1;
         if (postAttempts < 3) {
           return {
