@@ -3,7 +3,10 @@
  * Replaces the Electron main-process spotifyApi module.
  */
 
-import { spotifyRequest } from './auth.js';
+import { getGrantedScopes, getMissingScopes, spotifyRequest } from './auth.js';
+import { createLogger, nowMs } from './debug.js';
+
+const dlog = createLogger('spotify-api');
 
 function chunk(items, size) {
   const result = [];
@@ -11,6 +14,129 @@ function chunk(items, size) {
     result.push(items.slice(index, index + size));
   }
   return result;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isSpotifyStatus(error, statusCode) {
+  return String(error?.message || error).includes(`Spotify API ${statusCode}`);
+}
+
+function formatMissingScopesMessage(scopes) {
+  const label = scopes.length === 1 ? 'scope' : 'scopes';
+  return `Spotify authorization is missing required ${label}: ${scopes.join(', ')}. Sign out and sign in again, then approve the updated permissions.`;
+}
+
+function ensurePlaylistModifyScope(isPublic) {
+  const missingScopes = getMissingScopes([isPublic ? 'playlist-modify-public' : 'playlist-modify-private']);
+  if (missingScopes.length) {
+    throw new Error(formatMissingScopesMessage(missingScopes));
+  }
+}
+
+function formatProductLabel(product) {
+  const value = String(product || '').trim().toLowerCase();
+  if (!value) return 'unknown';
+  if (value === 'open') return 'free/open';
+  return value;
+}
+
+function formatPlaylistMutationDiagnostics(diagnostics) {
+  const parts = [];
+  if (diagnostics.currentUserId) {
+    parts.push(`signed-in user=${diagnostics.currentUserId}`);
+  }
+  if (diagnostics.currentUserProduct) {
+    parts.push(`product=${formatProductLabel(diagnostics.currentUserProduct)}`);
+  }
+  if (diagnostics.playlistOwnerId) {
+    parts.push(`playlist owner=${diagnostics.playlistOwnerId}`);
+  }
+  if (typeof diagnostics.playlistPublic === 'boolean') {
+    parts.push(`playlist public=${diagnostics.playlistPublic}`);
+  }
+  if (Number.isFinite(diagnostics.uriCount)) {
+    parts.push(`uris=${diagnostics.uriCount}`);
+  }
+  if (diagnostics.grantedScopes?.length) {
+    parts.push(`granted scopes=${diagnostics.grantedScopes.join(', ')}`);
+  }
+  if (diagnostics.sampleUris?.length) {
+    parts.push(`sample uris=${diagnostics.sampleUris.join(', ')}`);
+  }
+  return parts.join('; ');
+}
+
+function formatPlaylistMutationHint(diagnostics) {
+  const product = String(diagnostics.currentUserProduct || '').trim().toLowerCase();
+  if (product && product !== 'premium') {
+    return 'The signed-in Spotify account is not Premium. Since March 9, 2026, Development Mode requires Premium for the app owner and can return 403 on playlist item writes.';
+  }
+  return 'Spotify community reports in March 2026 show some app/account-level Development Mode restrictions returning 403 on playlist item endpoints even with correct scopes and playlist ownership.';
+}
+
+async function collectPlaylistMutationDiagnostics({ currentUser, playlistId, createdPlaylist, uris }) {
+  let playlistDetails = null;
+  try {
+    playlistDetails = await spotifyRequest('GET', `/playlists/${playlistId}`, {
+      fields: 'id,public,collaborative,owner(id)',
+    });
+  } catch (error) {
+    dlog('collectPlaylistMutationDiagnostics:playlistLookupFailed', {
+      playlistId,
+      message: String(error?.message || error),
+    });
+  }
+
+  return {
+    currentUserId: currentUser?.id || null,
+    currentUserProduct: currentUser?.product || null,
+    playlistOwnerId: playlistDetails?.owner?.id || createdPlaylist?.owner?.id || null,
+    playlistPublic: typeof playlistDetails?.public === 'boolean'
+      ? playlistDetails.public
+      : typeof createdPlaylist?.public === 'boolean'
+        ? createdPlaylist.public
+        : null,
+    grantedScopes: getGrantedScopes(),
+    uriCount: uris?.length || 0,
+    sampleUris: (uris || []).slice(0, 3),
+  };
+}
+
+async function waitForPlaylistMutationReady(playlistId) {
+  const delays = [0, 500, 1500, 3500, 7000];
+  let lastError = null;
+
+  for (let index = 0; index < delays.length; index += 1) {
+    if (delays[index] > 0) {
+      await sleep(delays[index]);
+    }
+
+    try {
+      await spotifyRequest('GET', `/playlists/${playlistId}`, {
+        fields: 'id,snapshot_id,public,collaborative,owner(id)',
+      });
+      dlog('waitForPlaylistMutationReady:ready', {
+        playlistId,
+        attempts: index + 1,
+      });
+      return true;
+    } catch (error) {
+      lastError = error;
+      const retryable = isSpotifyStatus(error, 403) || isSpotifyStatus(error, 404) || /Spotify API 5\d\d/.test(String(error?.message || error));
+      if (!retryable || index === delays.length - 1) {
+        break;
+      }
+    }
+  }
+
+  dlog('waitForPlaylistMutationReady:notReady', {
+    playlistId,
+    message: String(lastError?.message || lastError),
+  });
+  return false;
 }
 
 function toCamelot(key, mode) {
@@ -30,6 +156,8 @@ function parseYearFromDate(rawDate) {
 // --------------- Playlists ---------------
 
 export async function fetchCurrentUserPlaylists() {
+  const startedAt = nowMs();
+  dlog('fetchCurrentUserPlaylists:start');
   let offset = 0;
   const limit = 50;
   const allItems = [];
@@ -75,9 +203,18 @@ export async function fetchCurrentUserPlaylists() {
         }
       })
     );
+    dlog('fetchCurrentUserPlaylists:done', {
+      count: hydrated.length,
+      durationMs: Math.round(nowMs() - startedAt),
+      hydratedMissingCounts: true,
+    });
     return hydrated;
   }
 
+  dlog('fetchCurrentUserPlaylists:done', {
+    count: mapped.length,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
   return mapped;
 }
 
@@ -90,6 +227,8 @@ function normalizePlaylistItem(raw) {
 }
 
 async function fetchPlaylistItems(playlistId, progressCb) {
+  const startedAt = nowMs();
+  dlog('fetchPlaylistItems:start', { playlistId });
   const all = [];
   let offset = 0;
   const limit = 50;
@@ -121,12 +260,19 @@ async function fetchPlaylistItems(playlistId, progressCb) {
     offset += limit;
     if (!page.next) break;
   }
+  dlog('fetchPlaylistItems:done', {
+    playlistId,
+    items: all.length,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
   return all;
 }
 
 // --------------- Audio Features ---------------
 
 async function fetchAudioFeaturesByIds(trackIds, progressCb) {
+  const startedAt = nowMs();
+  dlog('fetchAudioFeaturesByIds:start', { count: trackIds.length });
   const result = new Map();
   const blockedTrackIds = new Set();
   const groups = chunk(trackIds, 100);
@@ -143,13 +289,11 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
       const message = String(error?.message || error);
       const isForbidden = message.includes(' 403 ') || message.includes('status" : 403');
       if (!isForbidden) throw error;
-      if (ids.length > 1) {
-        const midpoint = Math.floor(ids.length / 2);
-        await fetchGroupWithFallback(ids.slice(0, midpoint));
-        await fetchGroupWithFallback(ids.slice(midpoint));
-        return;
-      }
-      blockedTrackIds.add(ids[0]);
+      ids.forEach((id) => blockedTrackIds.add(id));
+      dlog('fetchAudioFeaturesByIds:forbiddenBatch', {
+        blocked: ids.length,
+        totalBlocked: blockedTrackIds.size,
+      });
     }
   }
 
@@ -168,12 +312,19 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
       });
     }
   }
+  dlog('fetchAudioFeaturesByIds:done', {
+    resolved: result.size,
+    blocked: blockedTrackIds.size,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
   return result;
 }
 
 // --------------- Artist Genres ---------------
 
 async function fetchArtistsByIds(artistIds, progressCb) {
+  const startedAt = nowMs();
+  dlog('fetchArtistsByIds:start', { count: artistIds.length });
   const result = new Map();
   const groups = chunk(artistIds, 50);
   for (let index = 0; index < groups.length; index += 1) {
@@ -190,12 +341,18 @@ async function fetchArtistsByIds(artistIds, progressCb) {
       });
     }
   }
+  dlog('fetchArtistsByIds:done', {
+    resolved: result.size,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
   return result;
 }
 
 // --------------- Full Playlist with Metadata ---------------
 
 export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
+  const startedAt = nowMs();
+  dlog('fetchPlaylistWithMetadata:start', { playlistId });
   if (typeof progressCb === 'function') {
     progressCb({ stage: 'start', message: 'Loading playlist header...' });
   }
@@ -344,12 +501,22 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
     });
   }
 
+  dlog('fetchPlaylistWithMetadata:done', {
+    playlistId,
+    tracks: hydratedTracks.length,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
+
   return result;
 }
 
 // --------------- Playlist Mutations ---------------
 
 export async function reorderPlaylist(playlistId, trackUris) {
+  dlog('reorderPlaylist:start', {
+    playlistId,
+    tracks: trackUris?.length || 0,
+  });
   const chunks = chunk(trackUris, 100);
   const first = chunks[0] || [];
   const response = await spotifyRequest('PUT', `/playlists/${playlistId}/tracks`, {}, { uris: first });
@@ -359,21 +526,35 @@ export async function reorderPlaylist(playlistId, trackUris) {
     await spotifyRequest('POST', `/playlists/${playlistId}/tracks`, {}, { uris: chunks[index] });
   }
 
+  dlog('reorderPlaylist:done', {
+    playlistId,
+    snapshotId,
+    chunks: chunks.length,
+  });
   return { snapshotId };
 }
 
 export async function createPlaylistFromTracks(payload) {
-  const me = await spotifyRequest('GET', '/me');
+  ensurePlaylistModifyScope(Boolean(payload.public));
+  const currentUser = await spotifyRequest('GET', '/me');
+
   const createBody = {
     name: payload.name,
     description: payload.description || 'Created in Spotify Manager',
     public: Boolean(payload.public),
   };
 
-  const created = await spotifyRequest('POST', `/users/${me.id}/playlists`, {}, createBody);
+  const created = await spotifyRequest('POST', '/me/playlists', {}, createBody);
+  await waitForPlaylistMutationReady(created.id);
   const uris = payload.trackUris || [];
-  for (const uriChunk of chunk(uris, 100)) {
-    await spotifyRequest('POST', `/playlists/${created.id}/tracks`, {}, { uris: uriChunk });
+  const uriChunks = chunk(uris, 100);
+
+  for (let index = 0; index < uriChunks.length; index += 1) {
+    const uriChunk = uriChunks[index];
+    await addTracksChunkWithRetry(created.id, uriChunk, index, uriChunks.length, {
+      currentUser,
+      createdPlaylist: created,
+    });
   }
 
   return {
@@ -381,4 +562,67 @@ export async function createPlaylistFromTracks(payload) {
     url: created.external_urls?.spotify || null,
     name: created.name,
   };
+}
+
+async function addTracksChunkWithRetry(playlistId, uris, chunkIndex, totalChunks, context = {}) {
+  const attempts = [0, 500, 1500, 3500, 7000];
+  let lastError = null;
+
+  for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+    if (attempts[attemptIndex] > 0) {
+      await sleep(attempts[attemptIndex]);
+    }
+
+    try {
+      await spotifyRequest('POST', `/playlists/${playlistId}/tracks`, {}, { uris });
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || error);
+      const isForbidden = isSpotifyStatus(error, 403);
+      const isRateLimited = isSpotifyStatus(error, 429);
+      const isServerError = /Spotify API 5\d\d/.test(message);
+
+      if (attemptIndex === attempts.length - 1) {
+        break;
+      }
+
+      if (attemptIndex === 0 && isForbidden) {
+        await waitForPlaylistMutationReady(playlistId);
+        try {
+          await spotifyRequest('PUT', `/playlists/${playlistId}/tracks`, {}, { uris });
+          return;
+        } catch (putError) {
+          lastError = putError;
+          if (!isSpotifyStatus(putError, 403)) {
+            throw putError;
+          }
+        }
+      }
+
+      if (!isForbidden && !isRateLimited && !isServerError) {
+        throw error;
+      }
+    }
+  }
+
+  const diagnostics = await collectPlaylistMutationDiagnostics({
+    currentUser: context.currentUser,
+    playlistId,
+    createdPlaylist: context.createdPlaylist,
+    uris,
+  });
+  const diagnosticsText = formatPlaylistMutationDiagnostics(diagnostics);
+  const hint = formatPlaylistMutationHint(diagnostics);
+  dlog('addTracksChunkWithRetry:failed', {
+    playlistId,
+    chunkIndex,
+    totalChunks,
+    lastError: String(lastError?.message || lastError),
+    diagnostics,
+  });
+
+  throw new Error(
+    `Playlist created but adding tracks failed at chunk ${chunkIndex + 1}/${totalChunks}: ${String(lastError?.message || lastError)} Diagnostics: ${diagnosticsText}. ${hint}`
+  );
 }

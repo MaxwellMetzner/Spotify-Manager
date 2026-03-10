@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spotify Manager Callback</title>
+  </head>
+  <body>
+    <noscript><p>JavaScript is required. <a href="/">Return to Spotify Manager</a>.</p></noscript>
+    <script>
+      const query = window.location.search || '';
+      const hash = window.location.hash || '';
+      window.location.replace(`/${query}${hash}`);
+    </script>
+  </body>
+</html>

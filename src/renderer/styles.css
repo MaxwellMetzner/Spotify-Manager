@@ -394,19 +394,53 @@ button {
   border-radius: 10px;
   width: 100%;
   position: relative;
+  overscroll-behavior: contain;
 }
 
 #tracksTable {
-  min-width: 1200px;
+  min-width: 100%;
+  width: max-content;
 }
 
 #tracksTable .tabulator {
-  min-width: 1200px;
+  min-width: 100%;
+  width: max-content;
+}
+
+.tabulator .tabulator-tableholder {
+  overflow: visible;
 }
 
 .table-tools {
   margin: 8px 0;
   align-items: flex-start;
+}
+
+.debug-panel {
+  margin: 8px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(6, 18, 21, 0.94);
+  overflow: hidden;
+}
+
+.debug-panel-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.debug-log-output {
+  margin: 0;
+  padding: 12px;
+  max-height: 240px;
+  overflow: auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #dffaf0;
+  background: rgba(4, 14, 16, 0.95);
 }
 
 .column-controls {

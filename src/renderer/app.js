@@ -1,19 +1,17 @@
 import * as auth from '../auth.js';
 import * as api from '../spotifyApi.js';
+import {
+  clearDebugLogEntries,
+  createLogger,
+  getDebugLogEntries,
+  getDebugState,
+  setDebugState,
+  subscribeDebugLogs,
+} from '../debug.js';
+import { applyTableData, createTableRenderQueue } from './tableView.js';
 
 const analysis = window.PlaylistAnalysis;
-
-const DEBUG_ENABLED = true;
-
-function dlog(event, payload) {
-  if (!DEBUG_ENABLED) return;
-  const stamp = new Date().toISOString();
-  if (payload === undefined) {
-    console.log(`[SpotifyManager][${stamp}] ${event}`);
-    return;
-  }
-  console.log(`[SpotifyManager][${stamp}] ${event}`, payload);
-}
+const dlog = createLogger('renderer');
 
 const STORAGE_KEYS = {
   weightPresets: 'spotifyManager.weightPresets.v2',
@@ -91,9 +89,63 @@ const state = {
   sourceMode: 'spotify',
   inlineHeaderFilters: {},
   playlistLoadRequestId: 0,
+  tableRenderRequestId: 0,
 };
 
 let tracksTable = null;
+let tracksTableReady = null;
+let tracksTableInitialized = false;
+let duplicateAnalysisTimer = null;
+const queueTableRender = createTableRenderQueue(async (tracks, options = {}) => {
+  const { resetScroll = true, rebuildColumns = false } = options;
+  const renderRequestId = state.tableRenderRequestId + 1;
+  state.tableRenderRequestId = renderRequestId;
+  const debugLabel = `render#${renderRequestId}`;
+  dlog('renderTable:start', {
+    debugLabel,
+    rows: tracks?.length || 0,
+    resetScroll,
+    rebuildColumns,
+    sourceMode: state.sourceMode,
+    selectedPlaylistId: state.selectedPlaylistId,
+    tableInitialized: tracksTableInitialized,
+  });
+
+  try {
+    initializeTable(tracks);
+    renderColumnControls();
+
+    const activeTracks = await applyTableData({
+      table: tracksTable,
+      tracks: tracks || [],
+      ready: tracksTableInitialized ? null : tracksTableReady,
+      rebuildColumns,
+      columns: rebuildColumns ? buildTabulatorColumns() : null,
+      sort: state.tableSort,
+      resetScroll,
+      getActiveData: getActiveTableData,
+      log: dlog,
+      debugLabel,
+    });
+
+    state.renderTracks = activeTracks;
+    refreshHeaderFilterVisuals();
+    renderVisibleRows();
+    dlog('renderTable:done', {
+      debugLabel,
+      rows: tracks?.length || 0,
+      activeRows: activeTracks?.length || 0,
+    });
+    return activeTracks;
+  } catch (error) {
+    dlog('renderTable:error', {
+      debugLabel,
+      rows: tracks?.length || 0,
+      message: String(error?.message || error),
+    });
+    throw error;
+  }
+}, { log: dlog, label: 'renderQueue' });
 
 const MIX_WEIGHT_FIELDS = [
   ['bpm', 'BPM'],
@@ -202,8 +254,9 @@ function setSourceMode(mode) {
   renderColumnControls();
   setAdvancedTabsEnabled(mode !== 'spotify');
   if (tracksTable) {
-    renderCurrentView({ resetScroll: false, rebuildColumns: true });
+    return renderCurrentView({ resetScroll: false, rebuildColumns: true });
   }
+  return Promise.resolve();
 }
 
 function get(id) {
@@ -211,6 +264,9 @@ function get(id) {
 }
 
 function cloneTracks(tracks) {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(tracks || []);
+  }
   return JSON.parse(JSON.stringify(tracks || []));
 }
 
@@ -220,6 +276,156 @@ function setMessage(text, isError = false) {
   if (!el) return;
   el.textContent = text;
   el.style.color = isError ? '#ff9175' : '#9fd6c5';
+}
+
+function readDebugQueryOverride() {
+  try {
+    const value = new URLSearchParams(window.location.search).get('debug');
+    if (value === null) return null;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'on', 'yes'].includes(normalized)) return true;
+    if (['0', 'false', 'off', 'no'].includes(normalized)) return false;
+  } catch {
+    // Ignore malformed URLs and keep the current persisted setting.
+  }
+  return null;
+}
+
+function formatDebugPayload(payload) {
+  if (payload === null || payload === undefined) return '';
+  if (typeof payload === 'string') return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return String(payload);
+  }
+}
+
+function updateDebugControls() {
+  const enabled = getDebugState();
+  const panel = get('debugPanel');
+  const visible = Boolean(panel && !panel.classList.contains('hidden'));
+  const toggleBtn = get('toggleDebugBtn');
+  const panelToggleBtn = get('toggleDebugPanelBtn');
+
+  if (toggleBtn) {
+    toggleBtn.textContent = enabled ? 'Debug: On' : 'Debug: Off';
+    toggleBtn.classList.toggle('btn-primary', enabled);
+  }
+  if (panelToggleBtn) {
+    panelToggleBtn.textContent = visible ? 'Hide Debug Log' : 'Show Debug Log';
+  }
+
+  get('copyDebugLogBtn')?.classList.toggle('hidden', !visible);
+  get('clearDebugLogBtn')?.classList.toggle('hidden', !visible);
+}
+
+function renderDebugLog() {
+  const output = get('debugLogOutput');
+  const summary = get('debugLogSummary');
+  if (!output || !summary) return;
+
+  const entries = getDebugLogEntries();
+  summary.textContent = `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`;
+  output.textContent = entries.length
+    ? entries
+        .map((entry) => {
+          const payload = formatDebugPayload(entry.payload);
+          return payload
+            ? `[${entry.stamp}] [${entry.scope}] ${entry.event} ${payload}`
+            : `[${entry.stamp}] [${entry.scope}] ${entry.event}`;
+        })
+        .join('\n')
+    : 'Debug log is empty.';
+  output.scrollTop = output.scrollHeight;
+  updateDebugControls();
+}
+
+function showDebugPanel() {
+  const panel = get('debugPanel');
+  if (!panel) return;
+  panel.classList.remove('hidden');
+  renderDebugLog();
+}
+
+function hideDebugPanel() {
+  const panel = get('debugPanel');
+  if (!panel) return;
+  panel.classList.add('hidden');
+  updateDebugControls();
+}
+
+function installDebugControls() {
+  const queryOverride = readDebugQueryOverride();
+  if (queryOverride !== null) {
+    setDebugState(queryOverride);
+  }
+
+  subscribeDebugLogs(() => {
+    const panel = get('debugPanel');
+    if (panel && !panel.classList.contains('hidden')) {
+      renderDebugLog();
+    } else {
+      updateDebugControls();
+    }
+  });
+
+  window.SpotifyManagerDebug = {
+    get enabled() {
+      return getDebugState();
+    },
+    setEnabled(enabled, persist = true) {
+      const next = setDebugState(enabled, { persist });
+      dlog('debug:setEnabled', { enabled: next, persist });
+      updateDebugControls();
+      if (next) {
+        showDebugPanel();
+      }
+      return next;
+    },
+    showPanel() {
+      showDebugPanel();
+    },
+    hidePanel() {
+      hideDebugPanel();
+    },
+    clear() {
+      clearDebugLogEntries();
+      renderDebugLog();
+    },
+    snapshot() {
+      return {
+        debugEnabled: getDebugState(),
+        sourceMode: state.sourceMode,
+        selectedPlaylistId: state.selectedPlaylistId,
+        workingTracks: state.workingTracks.length,
+        renderedTracks: state.renderTracks.length,
+        tableInitialized: tracksTableInitialized,
+        tableReadyPending: Boolean(tracksTableReady && !tracksTableInitialized),
+      };
+    },
+    entries() {
+      return getDebugLogEntries();
+    },
+  };
+
+  window.addEventListener('error', (event) => {
+    dlog('window:error', {
+      message: event.message,
+      filename: event.filename || null,
+      line: event.lineno || null,
+      column: event.colno || null,
+      stack: event.error?.stack || null,
+    });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    dlog('window:unhandledrejection', {
+      reason: String(event.reason?.message || event.reason),
+      stack: event.reason?.stack || null,
+    });
+  });
+
+  updateDebugControls();
 }
 
 function setSetupMessage(text, isError = false) {
@@ -402,10 +608,13 @@ function syncColumnConfigFromTable() {
 }
 
 function refreshHeaderFilterVisuals() {
-  if (!tracksTable) return;
-  columns.forEach(([field, label]) => {
-    const col = tracksTable.getColumn(field);
-    if (!col) return;
+  if (!tracksTable || typeof tracksTable.getColumns !== 'function') return;
+  const labelsByField = new Map(columns.map(([field, label]) => [field, label]));
+
+  tracksTable.getColumns().forEach((col) => {
+    const field = col.getField();
+    const label = labelsByField.get(field);
+    if (!field || !label) return;
     const icon = col.getElement()?.querySelector('.header-filter-icon');
     if (!icon) {
       col.updateDefinition({ title: buildHeaderTitle(label, field) });
@@ -417,7 +626,109 @@ function refreshHeaderFilterVisuals() {
 
 function getActiveTableData() {
   if (!tracksTable) return [];
-  return tracksTable.getData('active');
+  try {
+    return tracksTable.getData('active');
+  } catch (error) {
+    dlog('getActiveTableData:error', {
+      message: String(error?.message || error),
+      stack: error?.stack || null,
+      tableInitialized: tracksTableInitialized,
+    });
+    return [];
+  }
+}
+
+function registerTableEventHandlers(resolveReady) {
+  if (!tracksTable || typeof tracksTable.on !== 'function') {
+    dlog('initializeTable:eventBindingUnavailable', {
+      hasTable: Boolean(tracksTable),
+      hasOn: Boolean(tracksTable && tracksTable.on),
+    });
+    if (tracksTable) {
+      tracksTableInitialized = Boolean(tracksTable.initialized);
+      resolveReady();
+    }
+    return;
+  }
+
+  let readyResolved = false;
+  const markReady = (source) => {
+    if (readyResolved) return;
+    readyResolved = true;
+    tracksTableInitialized = true;
+    dlog('initializeTable:ready', {
+      source,
+      initializedFlag: Boolean(tracksTable?.initialized),
+    });
+    resolveReady();
+  };
+
+  tracksTable.on('tableBuilt', () => {
+    markReady('tableBuilt');
+    dlog('initializeTable:built', {
+      columns: buildTabulatorColumns().length,
+      activeRows: getActiveTableData().length,
+    });
+  });
+
+  tracksTable.on('renderStarted', () => {
+    dlog('table:renderStarted', {
+      selectedPlaylistId: state.selectedPlaylistId,
+      sourceMode: state.sourceMode,
+    });
+  });
+
+  tracksTable.on('renderComplete', () => {
+    dlog('table:renderComplete', {
+      activeRows: getActiveTableData().length,
+    });
+  });
+
+  tracksTable.on('dataLoaded', (data) => {
+    dlog('table:dataLoaded', {
+      rows: Array.isArray(data) ? data.length : null,
+    });
+  });
+
+  tracksTable.on('dataProcessed', () => {
+    dlog('table:dataProcessed', {
+      activeRows: getActiveTableData().length,
+    });
+  });
+
+  tracksTable.on('dataSorted', (sorters) => {
+    const sorter = sorters?.[0] || null;
+    state.tableSort = sorter
+      ? { field: sorter.field, direction: sorter.dir }
+      : { field: null, direction: null };
+    state.renderTracks = getActiveTableData();
+  });
+
+  tracksTable.on('dataFiltered', () => {
+    state.renderTracks = getActiveTableData();
+  });
+
+  tracksTable.on('columnMoved', () => {
+    syncColumnConfigFromTable();
+    renderColumnControls();
+  });
+
+  tracksTable.on('columnResized', () => {
+    syncColumnConfigFromTable();
+  });
+
+  queueMicrotask(() => {
+    if (tracksTable?.initialized) {
+      markReady('initialized-flag');
+    }
+  });
+}
+
+function getVisibleTracks() {
+  if (Array.isArray(state.renderTracks) && state.renderTracks.length) {
+    return state.renderTracks;
+  }
+  return selectedTracks();
 }
 
 function clearFieldFilter(field) {
@@ -459,41 +770,36 @@ function renderActiveFilterPills(filters) {
     .join('');
 }
 
-function initializeTable() {
+function initializeTable(initialTracks = []) {
   if (tracksTable) return;
-  dlog('initializeTable');
-  tracksTable = new Tabulator('#tracksTable', {
-    data: [],
-    columns: buildTabulatorColumns(),
-    layout: 'fitDataTable',
-    movableColumns: true,
-    resizableColumns: true,
-    selectableRows: true,
-    selectableRowsRangeMode: 'click',
-    placeholder: 'No tracks to display.',
-    rowContextMenu: [
-      {
-        label: 'Remove Song',
-        action: (_, row) => removeTracksByReference([row.getData()]),
-      },
-    ],
-    dataSorted: (sorters) => {
-      const sorter = sorters?.[0] || null;
-      state.tableSort = sorter
-        ? { field: sorter.field, direction: sorter.dir }
-        : { field: null, direction: null };
-      state.renderTracks = getActiveTableData();
-    },
-    dataFiltered: () => {
-      state.renderTracks = getActiveTableData();
-    },
-    columnMoved: () => {
-      syncColumnConfigFromTable();
-      renderColumnControls();
-    },
-    columnResized: () => {
-      syncColumnConfigFromTable();
-    },
+  dlog('initializeTable:start', { initialRows: initialTracks?.length || 0 });
+  tracksTableReady = new Promise((resolve, reject) => {
+    try {
+      tracksTable = new Tabulator('#tracksTable', {
+        data: initialTracks || [],
+        columns: buildTabulatorColumns(),
+        layout: 'fitDataTable',
+        movableColumns: true,
+        resizableColumns: true,
+        selectableRows: true,
+        selectableRowsRangeMode: 'click',
+        placeholder: 'No tracks to display.',
+        rowContextMenu: [
+          {
+            label: 'Remove Song',
+            action: (_, row) => removeTracksByReference([row.getData()]),
+          },
+        ],
+      });
+
+      registerTableEventHandlers(resolve);
+    } catch (error) {
+      dlog('initializeTable:failed', {
+        message: String(error?.message || error),
+        stack: error?.stack || null,
+      });
+      reject(error);
+    }
   });
 }
 
@@ -609,43 +915,33 @@ function setTableLoading(loading) {
 }
 
 function renderTable(tracks, options = {}) {
-  const { resetScroll = true, rebuildColumns = false } = options;
-  initializeTable();
-  renderColumnControls();
-  if (rebuildColumns) {
-    tracksTable.setColumns(buildTabulatorColumns());
-  }
-
-  tracksTable.setData(tracks || []);
-  if (state.tableSort.field && state.tableSort.direction) {
-    tracksTable.setSort(state.tableSort.field, state.tableSort.direction);
-  } else {
-    if (typeof tracksTable.clearSort === 'function') {
-      tracksTable.clearSort();
-    } else {
-      tracksTable.setSort([]);
-    }
-  }
-
-  if (resetScroll) {
-    const first = tracks?.[0];
-    if (first) {
-      tracksTable.scrollToRow(first, 'top', false).catch(() => {});
-    }
-  }
-
-  state.renderTracks = getActiveTableData();
-  refreshHeaderFilterVisuals();
-  renderVisibleRows();
+  return queueTableRender(tracks, options);
 }
 
 function getDisplayedTracks() {
   return selectedTracks();
 }
 
+function scheduleDuplicateAnalysis() {
+  if (duplicateAnalysisTimer) {
+    clearTimeout(duplicateAnalysisTimer);
+  }
+  duplicateAnalysisTimer = setTimeout(() => {
+    duplicateAnalysisTimer = null;
+    state.duplicateReport = analysis.findDuplicates(state.workingTracks);
+    renderDuplicates();
+  }, 0);
+}
+
 function renderCurrentView(options = {}) {
   const { resetScroll = false, rebuildColumns = false } = options;
-  renderTable(getDisplayedTracks(), { resetScroll, rebuildColumns });
+  dlog('renderCurrentView', {
+    resetScroll,
+    rebuildColumns,
+    displayedTracks: getDisplayedTracks().length,
+    sourceMode: state.sourceMode,
+  });
+  return renderTable(getDisplayedTracks(), { resetScroll, rebuildColumns });
 }
 
 function setFilterInputValue(id, value) {
@@ -1099,9 +1395,16 @@ function renderPlaylistHeader() {
 }
 
 function removeTracksByReference(trackRefs) {
-  const removeSet = new Set(trackRefs || []);
-  if (!removeSet.size) return;
-  const nextTracks = state.workingTracks.filter((track) => !removeSet.has(track));
+  const removeKeys = new Set(
+    (trackRefs || [])
+      .map((track) => track?.trackId || track?.uri || `${track?.title || ''}::${track?.artistDisplay || ''}::${track?.customOrder ?? ''}`)
+      .filter(Boolean)
+  );
+  if (!removeKeys.size) return;
+  const nextTracks = state.workingTracks.filter((track) => {
+    const key = track?.trackId || track?.uri || `${track?.title || ''}::${track?.artistDisplay || ''}::${track?.customOrder ?? ''}`;
+    return !removeKeys.has(key);
+  });
   const removedCount = state.workingTracks.length - nextTracks.length;
   if (!removedCount) return;
   commitWorkingTracks(nextTracks, `Removed ${removedCount} track(s)`);
@@ -1142,8 +1445,7 @@ function commitWorkingTracks(newTracks, label) {
   pushHistory(label);
   state.workingTracks = cloneTracks(newTracks);
   reindexWorkingTracks();
-  state.duplicateReport = analysis.findDuplicates(state.workingTracks);
-  renderDuplicates();
+  scheduleDuplicateAnalysis();
   if (state.filterActive) {
     applyCurrentFilters();
   } else {
@@ -1158,8 +1460,7 @@ function undoLastOperation() {
   state.history.future.push({ label: 'redo', tracks: cloneTracks(state.workingTracks) });
   state.workingTracks = cloneTracks(previous.tracks);
   reindexWorkingTracks();
-  state.duplicateReport = analysis.findDuplicates(state.workingTracks);
-  renderDuplicates();
+  scheduleDuplicateAnalysis();
   if (state.filterActive) {
     applyCurrentFilters();
   } else {
@@ -1176,8 +1477,7 @@ function redoLastOperation() {
   state.history.past.push({ label: 'undo', tracks: cloneTracks(state.workingTracks) });
   state.workingTracks = cloneTracks(next.tracks);
   reindexWorkingTracks();
-  state.duplicateReport = analysis.findDuplicates(state.workingTracks);
-  renderDuplicates();
+  scheduleDuplicateAnalysis();
   if (state.filterActive) {
     applyCurrentFilters();
   } else {
@@ -1214,6 +1514,12 @@ async function copyTextToClipboard(text) {
   return copied;
 }
 
+async function copyDebugLog() {
+  const text = get('debugLogOutput')?.textContent || '';
+  await copyTextToClipboard(text);
+  setMessage('Copied debug log.');
+}
+
 function bindSetupCopyValues() {
   document.querySelectorAll('.copy-value').forEach((el) => {
     el.addEventListener('click', async () => {
@@ -1240,6 +1546,36 @@ function setCsvImportStatus(text, isError = false) {
   const el = get('csvImportStatus');
   el.textContent = text;
   el.style.color = isError ? '#ff9175' : '#9fd6c5';
+}
+
+async function importCsvAndCloseModal(file, csvInput = null) {
+  if (!file) return;
+  dlog('importCsv:start', {
+    fileName: file.name,
+    fileSize: file.size || null,
+  });
+  closeCsvImportModal();
+  try {
+    await handleCsvFileImport(file);
+    setCsvImportStatus(`Imported: ${file.name}`);
+    dlog('importCsv:done', {
+      fileName: file.name,
+      tracks: state.workingTracks.length,
+    });
+  } catch (error) {
+    // If tracks actually loaded despite a table render timeout, don't reopen the modal.
+    if (state.workingTracks.length > 0 && state.sourceMode === 'csv') {
+      dlog('importCsv:tableRenderWarning', { message: error.message });
+      setMessage(`CSV loaded (${state.workingTracks.length} tracks) with a non-critical table warning.`);
+    } else {
+      openCsvImportModal();
+      setCsvImportStatus(error.message, true);
+    }
+  } finally {
+    if (csvInput) {
+      csvInput.value = '';
+    }
+  }
 }
 
 function parseCsvText(content) {
@@ -1282,7 +1618,12 @@ function parseCsvText(content) {
     row.push(current);
     rows.push(row);
   }
-  return rows.filter((r) => r.some((cell) => String(cell || '').trim().length));
+  const filtered = rows.filter((r) => r.some((cell) => String(cell || '').trim().length));
+  dlog('parseCsvText', {
+    rawRows: rows.length,
+    nonEmptyRows: filtered.length,
+  });
+  return filtered;
 }
 
 function toNumberOrNull(value) {
@@ -1400,11 +1741,20 @@ function csvRowsToTracks(rows) {
       analysisAvailable: false,
     });
   }
+  dlog('csvRowsToTracks', {
+    rowCount: rows.length,
+    trackCount: tracks.length,
+    headerCount: header.length,
+  });
   return tracks;
 }
 
 async function handleCsvFileImport(file) {
   if (!file) return;
+  dlog('handleCsvFileImport:start', {
+    fileName: file.name,
+    fileSize: file.size || null,
+  });
   const text = await file.text();
   const rows = parseCsvText(text);
   const tracks = csvRowsToTracks(rows);
@@ -1424,6 +1774,7 @@ async function handleCsvFileImport(file) {
   state.workingTracks = cloneTracks(state.baseTracks);
   state.filteredTracks = [];
   state.filterActive = false;
+  state.renderTracks = [];
   state.history = { past: [], future: [] };
   state.duplicateReport = analysis.findDuplicates(state.workingTracks);
   state.tableSort = { field: null, direction: null };
@@ -1434,12 +1785,17 @@ async function handleCsvFileImport(file) {
     filterCount.textContent = 'Filtered tracks: 0';
   }
 
-  setSourceMode('csv');
+  await setSourceMode('csv');
   renderPlaylists();
   renderPlaylistHeader();
-  renderCurrentView({ resetScroll: true });
+  await renderCurrentView({ resetScroll: true, rebuildColumns: true });
   renderDuplicates();
   renderTransitionDiagnostics();
+  dlog('handleCsvFileImport:done', {
+    fileName: file.name,
+    tracks: tracks.length,
+    renderedTracks: state.renderTracks.length,
+  });
   setMessage(`Imported CSV "${name}" with ${tracks.length} tracks.`);
 }
 
@@ -1664,7 +2020,10 @@ async function testAndSaveSetupWizard() {
 }
 
 async function refreshAuthAndUser() {
+  // Try to restore session from refresh token if access token is expired.
+  await auth.tryAutoRefresh();
   state.auth = auth.getAuthState();
+  dlog('refreshAuthAndUser', state.auth);
 
   if (state.auth.authenticated) {
     state.user = await auth.loadCurrentUser();
@@ -1678,12 +2037,18 @@ async function refreshAuthAndUser() {
 }
 
 async function loadPlaylists() {
+  dlog('loadPlaylists:start', {
+    authenticated: state.auth?.authenticated || false,
+  });
   if (!state.auth?.authenticated) {
     state.playlists = [];
     renderPlaylists();
     return;
   }
   state.playlists = await api.fetchCurrentUserPlaylists();
+  dlog('loadPlaylists:done', {
+    count: state.playlists.length,
+  });
   renderPlaylists();
 }
 
@@ -1692,19 +2057,29 @@ async function loadPlaylist(playlistId) {
   state.selectedPlaylistId = playlistId;
   const requestId = state.playlistLoadRequestId + 1;
   state.playlistLoadRequestId = requestId;
+  dlog('loadPlaylist:requestCreated', { playlistId, requestId });
 
   // Reset current table state immediately so stale rows are never shown during a new load.
+  state.selectedPlaylistMeta = null;
   state.baseTracks = [];
   state.workingTracks = [];
   state.filteredTracks = [];
   state.filterActive = false;
+  state.renderTracks = [];
 
   setTableLoading(true);
-  setSourceMode('spotify');
-  setMessage('Loading playlist...');
   try {
+    await setSourceMode('spotify');
+    await renderCurrentView({ resetScroll: false, rebuildColumns: true });
+    setMessage('Loading playlist...');
+
     const payload = await api.fetchPlaylistWithMetadata(playlistId, (progress) => {
       if (!progress || playlistId !== state.selectedPlaylistId) return;
+      dlog('loadPlaylist:progress', {
+        playlistId,
+        requestId,
+        ...progress,
+      });
       const { loadedItems, totalItems, completedBatches, totalBatches, message } = progress;
       if (Number.isFinite(loadedItems) && Number.isFinite(totalItems) && totalItems > 0) {
         const pct = Math.min(100, Math.round((loadedItems / totalItems) * 100));
@@ -1729,6 +2104,7 @@ async function loadPlaylist(playlistId) {
     state.workingTracks = cloneTracks(state.baseTracks);
     state.filteredTracks = [];
     state.filterActive = false;
+    state.renderTracks = [];
     state.history = { past: [], future: [] };
     state.duplicateReport = analysis.findDuplicates(state.workingTracks);
     updateHistoryButtons();
@@ -1739,14 +2115,18 @@ async function loadPlaylist(playlistId) {
     }
     renderPlaylists();
     renderPlaylistHeader();
-    setTableLoading(false);
-    renderCurrentView({ resetScroll: true });
+    await renderCurrentView({ resetScroll: true, rebuildColumns: true });
     renderDuplicates();
     renderTransitionDiagnostics();
+    dlog('loadPlaylist:done', {
+      playlistId,
+      requestId,
+      tracks: state.workingTracks.length,
+      renderedTracks: state.renderTracks.length,
+    });
     setMessage(`Loaded ${state.workingTracks.length} tracks.`);
   } catch (error) {
     dlog('loadPlaylist:error', { playlistId, message: String(error?.message || error) });
-    setTableLoading(false);
     const text = String(error?.message || error);
     if (text.includes('403')) {
       setMessage(
@@ -1756,7 +2136,8 @@ async function loadPlaylist(playlistId) {
     } else {
       setMessage(text, true);
     }
-    throw error;
+  } finally {
+    setTableLoading(false);
   }
 }
 
@@ -1772,6 +2153,10 @@ function resetToOriginalOrder() {
   setMessage('Reset to original Spotify order.');
 }
 
+function isValidSpotifyTrackUri(uri) {
+  return typeof uri === 'string' && uri.startsWith('spotify:track:') && uri.length > 14;
+}
+
 async function exportCurrentViewToPlaylist() {
   dlog('exportCurrentViewToPlaylist:start');
   if (!state.workingTracks.length) return;
@@ -1779,11 +2164,14 @@ async function exportCurrentViewToPlaylist() {
     setMessage('Sign in first to export a playlist.', true);
     return;
   }
-  const visible = state.renderTracks || [];
+  const visible = getVisibleTracks();
   if (!visible.length) {
     setMessage('No tracks are visible to export.', true);
     return;
   }
+
+  const validUris = visible.map((track) => track.uri).filter(isValidSpotifyTrackUri);
+  const skippedCount = visible.length - validUris.length;
 
   const defaultName = `${state.selectedPlaylistMeta?.name || 'Playlist'} - export`;
   const existingNames = new Set(
@@ -1792,7 +2180,9 @@ async function exportCurrentViewToPlaylist() {
   const payload = {
     defaultName,
     visibleCount: visible.length,
-    uriCount: visible.map((track) => track.uri).filter(Boolean).length,
+    uriCount: validUris.length,
+    skippedCount,
+    validUris,
     existingNames,
   };
   openExportReviewModal(payload);
@@ -1811,7 +2201,10 @@ function openExportReviewModal(payload) {
   const existingNames = payload.existingNames || new Set();
   const defaultName = payload.defaultName || 'Playlist - export';
   nameInput.value = defaultName;
-  summary.textContent = `Tracks to export: ${payload.visibleCount}. Valid Spotify URIs: ${payload.uriCount}.`;
+  const skippedNote = payload.skippedCount
+    ? ` (${payload.skippedCount} tracks without valid Spotify URIs will be skipped)`
+    : '';
+  summary.textContent = `Tracks to export: ${payload.visibleCount}. Valid Spotify URIs: ${payload.uriCount}.${skippedNote}`;
 
   const validate = () => {
     const current = nameInput.value.trim();
@@ -1845,12 +2238,17 @@ function openExportReviewModal(payload) {
     if (!finalName) return;
     confirmBtn.disabled = true;
     try {
-      const visible = state.renderTracks || [];
+      const uris = payload.validUris || getVisibleTracks().map((track) => track.uri).filter(isValidSpotifyTrackUri);
+      if (!uris.length) {
+        nameError.textContent = 'No valid Spotify track URIs to export.';
+        confirmBtn.disabled = false;
+        return;
+      }
       const result = await api.createPlaylistFromTracks({
         name: finalName,
         description: 'Exported from current view in Spotify Manager',
         public: false,
-        trackUris: visible.map((track) => track.uri).filter(Boolean),
+        trackUris: uris,
       });
       closeExportReviewModal();
       await loadPlaylists();
@@ -1874,6 +2272,12 @@ function bindKeyboardShortcuts() {
     const tag = String(document.activeElement?.tagName || '').toLowerCase();
     const editing = tag === 'input' || tag === 'textarea' || tag === 'select';
     if (editing) return;
+
+    if (event.key === 'Delete') {
+      event.preventDefault();
+      removeSelectedRows();
+      return;
+    }
 
     if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
       event.preventDefault();
@@ -1998,10 +2402,15 @@ async function bindEvents() {
     await refreshAuthAndUser();
     state.playlists = [];
     state.selectedPlaylistId = null;
+    state.selectedPlaylistMeta = null;
+    state.baseTracks = [];
     state.workingTracks = [];
-    setSourceMode('spotify');
+    state.filteredTracks = [];
+    state.filterActive = false;
+    state.renderTracks = [];
+    await setSourceMode('spotify');
     renderPlaylists();
-    renderTable([]);
+    await renderTable([], { resetScroll: false, rebuildColumns: true });
     setMessage('Signed out.');
   });
 
@@ -2022,6 +2431,31 @@ async function bindEvents() {
     setAllColumnVisibility(false);
   });
   get('removeSelectedBtn').addEventListener('click', removeSelectedRows);
+  get('toggleDebugBtn')?.addEventListener('click', () => {
+    const next = setDebugState(!getDebugState());
+    dlog('debug:toggleButton', { enabled: next });
+    if (next) {
+      showDebugPanel();
+    }
+    updateDebugControls();
+  });
+  get('toggleDebugPanelBtn')?.addEventListener('click', () => {
+    const panel = get('debugPanel');
+    if (!panel) return;
+    if (panel.classList.contains('hidden')) {
+      showDebugPanel();
+      return;
+    }
+    hideDebugPanel();
+  });
+  get('copyDebugLogBtn')?.addEventListener('click', () => {
+    copyDebugLog().catch((error) => setMessage(error.message, true));
+  });
+  get('clearDebugLogBtn')?.addEventListener('click', () => {
+    clearDebugLogEntries();
+    renderDebugLog();
+    setMessage('Cleared debug log.');
+  });
 
   const csvInput = get('csvFileInput');
   const dropzone = get('csvDropzone');
@@ -2044,22 +2478,13 @@ async function bindEvents() {
     dropzone.classList.remove('drag-active');
     const file = event.dataTransfer?.files?.[0];
     if (!file) return;
-    handleCsvFileImport(file)
-      .then(() => {
-        setCsvImportStatus(`Imported: ${file.name}`);
-        closeCsvImportModal();
-      })
+    importCsvAndCloseModal(file, csvInput)
       .catch((error) => setCsvImportStatus(error.message, true));
   });
   csvInput.addEventListener('change', () => {
     const file = csvInput.files?.[0];
     if (!file) return;
-    handleCsvFileImport(file)
-      .then(() => {
-        setCsvImportStatus(`Imported: ${file.name}`);
-        closeCsvImportModal();
-        csvInput.value = '';
-      })
+    importCsvAndCloseModal(file, csvInput)
       .catch((error) => setCsvImportStatus(error.message, true));
   });
 
@@ -2184,8 +2609,27 @@ async function bindEvents() {
 }
 
 async function init() {
+  installDebugControls();
+  dlog('init:start', {
+    debugEnabled: getDebugState(),
+    href: window.location.href,
+  });
+  const canonicalOriginResult = auth.ensureCanonicalLoopbackOrigin();
+  if (canonicalOriginResult?.redirected) {
+    return;
+  }
+
   state.columnConfig = buildDefaultColumnConfig();
+
+  // Eagerly create the table instance so it exists for all future renders.
+  // Don't await tableBuilt here — it fires async after layout/paint.
+  // The render queue handles waiting via the `ready` promise as-needed.
+  initializeTable([]);
+
   setSourceMode('spotify');
+  if (getDebugState()) {
+    showDebugPanel();
+  }
   bindRibbonTabs();
   syncPresetStateFromStorage();
   bindSetupCopyValues();
@@ -2210,9 +2654,13 @@ async function init() {
     try {
       const wasCallback = await auth.handleAuthCallback();
       if (wasCallback) {
+        dlog('init:authCallbackHandled');
         setMessage('Signed in successfully.');
       }
     } catch (callbackError) {
+      dlog('init:authCallbackError', {
+        message: String(callbackError?.message || callbackError),
+      });
       setMessage(String(callbackError?.message || callbackError), true);
     }
 
@@ -2224,6 +2672,9 @@ async function init() {
     await refreshAuthAndUser();
     await loadPlaylists();
   } catch (error) {
+    dlog('init:error', {
+      message: String(error?.message || error),
+    });
     setMessage(error.message, true);
   }
 }

@@ -62,8 +62,22 @@
           <div class="inline-controls table-tools">
             <button id="openColumnsBtn" class="btn btn-small">Columns</button>
             <button id="removeSelectedBtn" class="btn btn-small">Remove Selected</button>
+            <button id="toggleDebugBtn" class="btn btn-small">Debug: Off</button>
+            <button id="toggleDebugPanelBtn" class="btn btn-small">Show Debug Log</button>
+            <button id="copyDebugLogBtn" class="btn btn-small hidden">Copy Debug Log</button>
+            <button id="clearDebugLogBtn" class="btn btn-small hidden">Clear Debug Log</button>
           </div>
           <div id="activeFilterPills" class="filter-pills"></div>
+
+          <div id="debugPanel" class="debug-panel hidden">
+            <div class="row-between debug-panel-header">
+              <div>
+                <strong>Debug Log</strong>
+                <div id="debugLogSummary" class="subtle">0 entries</div>
+              </div>
+            </div>
+            <pre id="debugLogOutput" class="debug-log-output">Debug log is empty.</pre>
+          </div>
 
           <div class="table-filter-strip hidden">
             <label>Title <input id="filterTitle" type="text" placeholder="title" /></label>
@@ -226,7 +240,7 @@
               <li><strong>Website</strong>: <code class="copy-value" data-copy="http://localhost" title="Click to copy">http://localhost</code></li>
               <li>
                 <strong>Redirect URIs</strong>: add the exact URI shown here:
-                <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">http://127.0.0.1:3000/callback</code>
+                <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">http://127.0.0.1:3000/api/auth/spotify/callback</code>
               </li>
               <li><strong>Which API/SDKs are you planning to use?</strong>: <strong>Check the Web API checkbox</strong></li>
               <li><strong>Terms of Service</strong>: <strong>Check the Terms of Service checkbox</strong></li>
@@ -237,7 +251,7 @@
         </ol>
         <div class="filter-grid">
           <label>SPOTIFY_CLIENT_ID <input id="setupClientId" type="text" placeholder="Paste Client ID" /></label>
-          <label>SPOTIFY_REDIRECT_URI <input id="setupRedirectUri" type="text" value="http://127.0.0.1:3000/callback" /></label>
+          <label>SPOTIFY_REDIRECT_URI <input id="setupRedirectUri" type="text" value="http://127.0.0.1:3000/api/auth/spotify/callback" /></label>
         </div>
         <div class="inline-controls">
           <button id="createEnvBtn" class="btn btn-primary">Test &amp; Save</button>

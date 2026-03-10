@@ -52,6 +52,13 @@ function installBrowserGlobals() {
     accessToken: 'mock_access_token',
     refreshToken: 'mock_refresh_token',
     expiresAt: Date.now() + 3600 * 1000,
+    scopes: [
+      'playlist-read-private',
+      'playlist-read-collaborative',
+      'playlist-modify-private',
+      'playlist-modify-public',
+      'user-read-private',
+    ],
   }));
 }
 
@@ -222,10 +229,7 @@ test('createPlaylistFromTracks creates playlist and adds tracks', async () => {
       const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
       calls.push({ path: url.pathname, method: opts.method });
 
-      if (url.pathname.includes('/me') && !url.pathname.includes('/playlists')) {
-        return { ok: true, status: 200, json: async () => ({ id: 'user1' }) };
-      }
-      if (opts.method === 'POST' && url.pathname.includes('/users/')) {
+      if (opts.method === 'POST' && url.pathname === '/v1/me/playlists') {
         return {
           ok: true, status: 200,
           json: async () => ({
@@ -250,7 +254,190 @@ test('createPlaylistFromTracks creates playlist and adds tracks', async () => {
 
     assert.equal(result.id, 'new_pl');
     assert.equal(result.name, 'Created Playlist');
-    assert.ok(calls.some((c) => c.method === 'POST' && c.path.includes('/users/')));
+    assert.ok(calls.some((c) => c.method === 'POST' && c.path === '/v1/me/playlists'));
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('createPlaylistFromTracks falls back to PUT when first add-tracks POST is forbidden', async () => {
+  installBrowserGlobals();
+  try {
+    const calls = [];
+    globalThis.fetch = async (urlOrStr, opts) => {
+      const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
+      calls.push({ path: url.pathname, method: opts.method });
+
+      if (opts.method === 'POST' && url.pathname === '/v1/me/playlists') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'new_pl',
+            name: 'Created Playlist',
+            external_urls: { spotify: 'https://open.spotify.com/playlist/new_pl' },
+          }),
+        };
+      }
+
+      if (opts.method === 'POST' && url.pathname === '/v1/playlists/new_pl/tracks') {
+        return {
+          ok: false,
+          status: 403,
+          text: async () => '{"error":{"status":403,"message":"Forbidden"}}',
+        };
+      }
+
+      if (opts.method === 'PUT' && url.pathname === '/v1/playlists/new_pl/tracks') {
+        return { ok: true, status: 200, json: async () => ({ snapshot_id: 'seeded' }) };
+      }
+
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+
+    const api = await importApi();
+    const result = await api.createPlaylistFromTracks({
+      name: 'Test Export',
+      description: 'desc',
+      public: false,
+      trackUris: ['spotify:track:x'],
+    });
+
+    assert.equal(result.id, 'new_pl');
+    assert.ok(calls.some((c) => c.method === 'POST' && c.path === '/v1/playlists/new_pl/tracks'));
+    assert.ok(calls.some((c) => c.method === 'PUT' && c.path === '/v1/playlists/new_pl/tracks'));
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('createPlaylistFromTracks retries forbidden add-tracks requests before failing', async () => {
+  installBrowserGlobals();
+  try {
+    let postAttempts = 0;
+    globalThis.fetch = async (urlOrStr, opts) => {
+      const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
+
+      if (opts.method === 'GET' && url.pathname === '/v1/me') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'user1', product: 'premium' }),
+        };
+      }
+
+      if (opts.method === 'POST' && url.pathname === '/v1/me/playlists') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'new_pl',
+            name: 'Created Playlist',
+            external_urls: { spotify: 'https://open.spotify.com/playlist/new_pl' },
+          }),
+        };
+      }
+
+      if (url.pathname === '/v1/playlists/new_pl/tracks' && opts.method === 'PUT') {
+        return {
+          ok: false,
+          status: 403,
+          text: async () => '{"error":{"status":403,"message":"Forbidden"}}',
+        };
+      }
+
+      if (url.pathname === '/v1/playlists/new_pl/tracks' && opts.method === 'POST') {
+        postAttempts += 1;
+        if (postAttempts < 3) {
+          return {
+            ok: false,
+            status: 403,
+            text: async () => '{"error":{"status":403,"message":"Forbidden"}}',
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ snapshot_id: 'done' }) };
+      }
+
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    };
+
+    const api = await importApi();
+    const result = await api.createPlaylistFromTracks({
+      name: 'Retry Export',
+      description: 'desc',
+      public: false,
+      trackUris: ['spotify:track:x'],
+    });
+
+    assert.equal(result.id, 'new_pl');
+    assert.equal(postAttempts, 3);
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('fetchPlaylistWithMetadata tolerates forbidden audio-features responses', async () => {
+  installBrowserGlobals();
+  try {
+    globalThis.fetch = async (urlOrStr, opts) => {
+      const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
+      if (url.pathname === '/v1/playlists/pl3') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'pl3', name: 'Test PL', description: '', tracks: { total: 1 },
+            owner: { display_name: 'owner', id: 'owner' },
+            public: true, collaborative: false, snapshot_id: 'snap',
+            followers: { total: 10 }, images: [], external_urls: { spotify: '' },
+          }),
+        };
+      }
+      if (url.pathname === '/v1/playlists/pl3/items') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [{
+              track: {
+                id: 'tr1', type: 'track', name: 'Song', uri: 'spotify:track:tr1',
+                artists: [{ id: 'ar1', name: 'Artist' }],
+                album: { id: 'al1', name: 'Album', release_date: '2024-01-01', album_type: 'album' },
+                duration_ms: 123000, explicit: false, popularity: 50,
+              },
+              added_at: '2024-01-01T00:00:00Z',
+              added_by: { id: 'user1' },
+              is_local: false,
+            }],
+            total: 1,
+            next: null,
+          }),
+        };
+      }
+      if (url.pathname === '/v1/audio-features') {
+        return {
+          ok: false,
+          status: 403,
+          text: async () => '{"error":{"status":403,"message":"Forbidden"}}',
+        };
+      }
+      if (url.pathname === '/v1/artists') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ artists: [{ id: 'ar1', genres: ['indie'] }] }),
+        };
+      }
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    };
+
+    const api = await importApi();
+    const result = await api.fetchPlaylistWithMetadata('pl3');
+
+    assert.equal(result.tracks.length, 1);
+    assert.equal(result.tracks[0].title, 'Song');
+    assert.equal(result.tracks[0].analysisAvailable, false);
+    assert.equal(result.tracks[0].bpm, null);
   } finally {
     cleanupBrowserGlobals();
   }

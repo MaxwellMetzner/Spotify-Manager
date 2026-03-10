@@ -21,13 +21,34 @@ function createStorageMock() {
   };
 }
 
+function createLocation(url) {
+  const parsed = new URL(url);
+  return {
+    origin: parsed.origin,
+    pathname: parsed.pathname,
+    href: parsed.toString(),
+    search: parsed.search,
+    hash: parsed.hash,
+    hostname: parsed.hostname,
+    port: parsed.port,
+    replace(nextUrl) {
+      Object.assign(this, createLocation(nextUrl));
+    },
+  };
+}
+
 function installBrowserGlobals(overrides = {}) {
   globalThis.localStorage = createStorageMock();
   globalThis.sessionStorage = createStorageMock();
+  const windowOverrides = overrides.window || {};
+  const location = overrides.window?.location
+    ? createLocation(overrides.window.location.href || `${overrides.window.location.origin || 'http://localhost:3000'}${overrides.window.location.pathname || '/'}${overrides.window.location.search || ''}${overrides.window.location.hash || ''}`)
+    : createLocation('http://localhost:3000/');
+  const { location: _ignoredLocation, ...restWindowOverrides } = windowOverrides;
   globalThis.window = {
-    location: { origin: 'http://localhost:3000', pathname: '/', href: '', search: '' },
+    location,
     history: { replaceState() {} },
-    ...overrides.window,
+    ...restWindowOverrides,
   };
   Object.defineProperty(globalThis, 'crypto', {
     value: {
@@ -109,7 +130,7 @@ test('getRecommendedRedirectUri returns callback route on current origin', async
   });
   try {
     const auth = await importAuth();
-    assert.equal(auth.getRecommendedRedirectUri(), 'http://127.0.0.1:8888/callback');
+    assert.equal(auth.getRecommendedRedirectUri(), 'http://127.0.0.1:8888/api/auth/spotify/callback');
   } finally {
     cleanupBrowserGlobals();
   }
@@ -120,7 +141,7 @@ test('testSetupConfig rejects malformed client ID', async () => {
   try {
     const auth = await importAuth();
     assert.throws(
-      () => auth.testSetupConfig({ clientId: 'short', redirectUri: 'http://127.0.0.1:8888/callback' }),
+      () => auth.testSetupConfig({ clientId: 'short', redirectUri: 'http://127.0.0.1:8888/api/auth/spotify/callback' }),
       /format looks invalid/i
     );
   } finally {
@@ -153,7 +174,7 @@ test('testSetupConfig rejects localhost redirect host', async () => {
     assert.throws(
       () => auth.testSetupConfig({
         clientId: '1234567890abcdef1234567890abcdef',
-        redirectUri: 'http://localhost:3000/callback',
+        redirectUri: 'http://localhost:3000/api/auth/spotify/callback',
       }),
       /cannot use localhost/i
     );
@@ -168,13 +189,13 @@ test('testSetupConfig returns authorize URL for valid setup input', async () => 
     const auth = await importAuth();
     const result = auth.testSetupConfig({
       clientId: '1234567890abcdef1234567890abcdef',
-      redirectUri: 'http://127.0.0.1:3000/callback',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
     });
 
     assert.equal(result.ok, true);
     assert.equal(result.clientIdMasked, '1234...cdef');
     assert.ok(result.authorizeUrl.includes('https://accounts.spotify.com/authorize?'));
-    assert.ok(result.authorizeUrl.includes('redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fcallback'));
+    assert.ok(result.authorizeUrl.includes('redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fauth%2Fspotify%2Fcallback'));
   } finally {
     cleanupBrowserGlobals();
   }
@@ -195,7 +216,23 @@ test('getSetupState migrates legacy 8888 callback to current loopback callback',
     }));
 
     const state = auth.getSetupState();
-    assert.equal(state.redirectUri, 'http://127.0.0.1:3000/callback');
+    assert.equal(state.redirectUri, 'http://127.0.0.1:3000/api/auth/spotify/callback');
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('getSetupState migrates legacy /callback path to callback route under api/auth', async () => {
+  await installBrowserGlobals();
+  try {
+    const auth = await importAuth();
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: '1234567890abcdef1234567890abcdef',
+      redirectUri: 'http://127.0.0.1:3000/callback',
+    }));
+
+    const state = auth.getSetupState();
+    assert.equal(state.redirectUri, 'http://127.0.0.1:3000/api/auth/spotify/callback');
   } finally {
     cleanupBrowserGlobals();
   }
@@ -267,7 +304,7 @@ test('spotifyRequest makes authenticated fetch with bearer token', async () => {
     // Seed valid setup and tokens
     localStorage.setItem('spotifyManager.setup', JSON.stringify({
       clientId: 'test_client_id_1234',
-      redirectUri: 'http://127.0.0.1:3000/',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
     }));
     localStorage.setItem('spotifyManager.tokens', JSON.stringify({
       accessToken: 'my_access_token',
@@ -308,6 +345,7 @@ test('handleAuthCallback returns false when no code in URL', async () => {
 test('handleAuthCallback throws on state mismatch', async () => {
   await installBrowserGlobals();
   globalThis.window.location.search = '?code=abc&state=wrong';
+  globalThis.window.location.href = 'http://localhost:3000/?code=abc&state=wrong';
   try {
     const auth = await importAuth();
     sessionStorage.setItem('spotify_pkce_state', 'expected_state');
@@ -322,12 +360,13 @@ test('handleAuthCallback throws on state mismatch', async () => {
 test('handleAuthCallback exchanges code for tokens on valid callback', async () => {
   await installBrowserGlobals();
   globalThis.window.location.search = '?code=valid_code&state=correct_state';
+  globalThis.window.location.href = 'http://localhost:3000/?code=valid_code&state=correct_state';
   try {
     const auth = await importAuth();
 
     localStorage.setItem('spotifyManager.setup', JSON.stringify({
       clientId: 'test_client_id',
-      redirectUri: 'http://127.0.0.1:3000/',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
     }));
     sessionStorage.setItem('spotify_pkce_state', 'correct_state');
     sessionStorage.setItem('spotify_pkce_verifier', 'verifier_abc');
@@ -348,6 +387,108 @@ test('handleAuthCallback exchanges code for tokens on valid callback', async () 
     const state = auth.getAuthState();
     assert.equal(state.authenticated, true);
     assert.equal(state.hasRefreshToken, true);
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('beginLogin stores PKCE fallback transaction in local storage', async () => {
+  await installBrowserGlobals();
+  try {
+    const auth = await importAuth();
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: '1234567890abcdef1234567890abcdef',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+    }));
+
+    await auth.beginLogin();
+
+    const transaction = JSON.parse(localStorage.getItem('spotifyManager.pkceTransaction'));
+    assert.equal(typeof transaction.state, 'string');
+    assert.equal(typeof transaction.codeVerifier, 'string');
+    assert.equal(transaction.redirectUri, 'http://127.0.0.1:3000/api/auth/spotify/callback');
+    assert.ok(window.location.href.includes('https://accounts.spotify.com/authorize?'));
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('handleAuthCallback uses local storage fallback when session storage was cleared', async () => {
+  await installBrowserGlobals();
+  globalThis.window.location.search = '?code=valid_code&state=correct_state';
+  globalThis.window.location.href = 'http://localhost:3000/?code=valid_code&state=correct_state';
+  try {
+    const auth = await importAuth();
+
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: 'test_client_id',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+    }));
+    localStorage.setItem('spotifyManager.pkceTransaction', JSON.stringify({
+      state: 'correct_state',
+      codeVerifier: 'verifier_from_backup',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+      createdAt: Date.now(),
+    }));
+
+    globalThis.fetch = async (_url, _opts) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: 'new_access',
+        refresh_token: 'new_refresh',
+        expires_in: 3600,
+      }),
+    });
+
+    const result = await auth.handleAuthCallback();
+    assert.equal(result, true);
+    assert.equal(localStorage.getItem('spotifyManager.pkceTransaction'), null);
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('ensureCanonicalLoopbackOrigin redirects localhost to 127.0.0.1', async () => {
+  await installBrowserGlobals({
+    window: {
+      location: {
+        href: 'http://localhost:3000/?debug=1#table',
+      },
+      history: { replaceState() {} },
+    },
+  });
+  try {
+    const auth = await importAuth();
+    const result = auth.ensureCanonicalLoopbackOrigin();
+
+    assert.equal(result.redirected, true);
+    assert.equal(window.location.href, 'http://127.0.0.1:3000/?debug=1#table');
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('handleAuthCallback explains missing PKCE transaction', async () => {
+  await installBrowserGlobals({
+    window: {
+      location: {
+        href: 'http://127.0.0.1:3000/?code=abc&state=state_1234',
+      },
+      history: { replaceState() {} },
+    },
+  });
+  try {
+    const auth = await importAuth();
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: '1234567890abcdef1234567890abcdef',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+    }));
+
+    await assert.rejects(
+      () => auth.handleAuthCallback(),
+      /No saved PKCE transaction was available/i
+    );
   } finally {
     cleanupBrowserGlobals();
   }

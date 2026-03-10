@@ -1,0 +1,375 @@
+[SpotifyManager:renderer][2026-03-10T02:09:35.464Z] init:start {"debugEnabled":true,"href":"http://127.0.0.1:3000/?/debug=1"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.464Z] initializeTable:start {"initialRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.465Z] setSourceMode {"mode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.465Z] applyColumnPresetForSource {"mode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.465Z] renderCurrentView {"resetScroll":false,"rebuildColumns":true,"displayedTracks":0,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.465Z] renderQueue:queued {"requestId":1}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.465Z] renderQueue:start {"requestId":1}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.465Z] renderTable:start {"debugLabel":"render#1","rows":0,"resetScroll":false,"rebuildColumns":true,"sourceMode":"spotify","selectedPlaylistId":null,"tableInitialized":false}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.466Z] applyTableData:start {"debugLabel":"render#1","rows":0,"rebuildColumns":true,"resetScroll":false,"hasReadyPromise":true,"sort":{"field":null,"direction":null}}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.466Z] Table initialization:start {"timeoutMs":10000,"debugLabel":"render#1","rows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.476Z] table:dataLoaded {"rows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.476Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.477Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.477Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.478Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.478Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.478Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.479Z] table:dataProcessed {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.480Z] initializeTable:ready {"source":"tableBuilt","initializedFlag":true}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.480Z] initializeTable:built {"columns":8,"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.480Z] Table initialization:done {"durationMs":14,"debugLabel":"render#1","rows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.482Z] Table column update:start {"timeoutMs":10000,"debugLabel":"render#1","columnCount":8}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.482Z] Table column update:done {"durationMs":0,"debugLabel":"render#1","columnCount":8}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.482Z] table:dataLoaded {"rows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.482Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.483Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.483Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] table:dataProcessed {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] Table data update:start {"timeoutMs":10000,"debugLabel":"render#1","rows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] Table data update:done {"durationMs":0,"debugLabel":"render#1","rows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.484Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.485Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.485Z] Table sort reset:start {"timeoutMs":5000,"debugLabel":"render#1"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.485Z] Table sort reset:done {"durationMs":0,"debugLabel":"render#1"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.485Z] Table redraw:scheduled {"debugLabel":"render#1"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.485Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.486Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.486Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.487Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.487Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.487Z] table:renderComplete {"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.487Z] applyTableData:done {"debugLabel":"render#1","rows":0,"activeRows":0,"durationMs":22}
+app.js:613 Find Error - No matching column found: recordLabel
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: albumReleaseYear
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: bpm
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: tempo
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: camelot
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: key
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: mode
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: energy
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: danceability
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: valence
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: loudness
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: acousticness
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: instrumentalness
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: speechiness
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: liveness
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: keyModeLabel
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: timeSignature
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: popularity
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: genreDisplay
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: durationSeconds
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: explicit
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+app.js:613 Find Error - No matching column found: uri
+getColumn @ tabulator.min.js:2
+(anonymous) @ app.js:613
+refreshHeaderFilterVisuals @ app.js:612
+createTableRenderQueue.log @ app.js:132
+await in createTableRenderQueue.log
+(anonymous) @ tableView.js:151
+Promise.then
+(anonymous) @ tableView.js:147
+renderTable @ app.js:915
+renderCurrentView @ app.js:941
+setSourceMode @ app.js:257
+init @ app.js:2630
+(anonymous) @ app.js:2683Understand this warning
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.489Z] renderTable:done {"debugLabel":"render#1","rows":0,"activeRows":0}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.490Z] renderQueue:done {"requestId":1,"durationMs":24}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.494Z] tryAutoRefresh:start {"hasAccessToken":true,"hasRefreshToken":true,"expiresAt":1773111378838}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.494Z] refreshAuthAndUser {"authenticated":true,"hasRefreshToken":true,"expiresAt":1773111378838}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.494Z] spotifyRequest:start {"method":"GET","path":"/v1/me","query":{},"hasBody":false,"tokenSuffix":"BQBQMk...zWPB4M"}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.494Z] fetchWithTimeout:start {"method":"GET","url":"https://api.spotify.com/v1/me","timeoutMs":15000}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.577Z] fetchWithTimeout:done {"method":"GET","url":"https://api.spotify.com/v1/me","durationMs":83}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.577Z] spotifyRequest:done {"method":"GET","path":"/v1/me","status":200,"durationMs":83}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:35.577Z] loadPlaylists:start {"authenticated":true}
+debug.js:103 [SpotifyManager:spotify-api][2026-03-10T02:09:35.577Z] fetchCurrentUserPlaylists:start
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.578Z] spotifyRequest:start {"method":"GET","path":"/v1/me/playlists","query":{"limit":"50","offset":"0"},"hasBody":false,"tokenSuffix":"BQBQMk...zWPB4M"}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.578Z] fetchWithTimeout:start {"method":"GET","url":"https://api.spotify.com/v1/me/playlists?limit=50&offset=0","timeoutMs":15000}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.843Z] fetchWithTimeout:done {"method":"GET","url":"https://api.spotify.com/v1/me/playlists?limit=50&offset=0","durationMs":265}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.847Z] spotifyRequest:done {"method":"GET","path":"/v1/me/playlists","status":200,"durationMs":269}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.847Z] spotifyRequest:start {"method":"GET","path":"/v1/me/playlists","query":{"limit":"50","offset":"50"},"hasBody":false,"tokenSuffix":"BQBQMk...zWPB4M"}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:35.847Z] fetchWithTimeout:start {"method":"GET","url":"https://api.spotify.com/v1/me/playlists?limit=50&offset=50","timeoutMs":15000}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:36.073Z] fetchWithTimeout:done {"method":"GET","url":"https://api.spotify.com/v1/me/playlists?limit=50&offset=50","durationMs":226}
+debug.js:118 [SpotifyManager:auth][2026-03-10T02:09:36.083Z] spotifyRequest:done {"method":"GET","path":"/v1/me/playlists","status":200,"durationMs":236}
+debug.js:118 [SpotifyManager:spotify-api][2026-03-10T02:09:36.083Z] fetchCurrentUserPlaylists:done {"count":80,"durationMs":506}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:36.083Z] loadPlaylists:done {"count":80}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:36.088Z] table:renderStarted {"selectedPlaylistId":null,"sourceMode":"spotify"}
+debug.js:118 [SpotifyManager:renderer][2026-03-10T02:09:36.089Z] table:renderComplete {"activeRows":0}

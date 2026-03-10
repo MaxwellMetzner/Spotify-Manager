@@ -61,7 +61,7 @@ This app uses Spotify Web API and OAuth2 flows based on Spotify docs:
 
 1. Create a Spotify app in the Spotify Developer Dashboard.
 1. Add redirect URI to your Spotify app settings (must match exactly):
-   - `http://127.0.0.1:8888/callback`
+  - `http://127.0.0.1:3000/api/auth/spotify/callback`
 1. Create `.env` from `.env.example` and fill values.
 1. Install dependencies:
 

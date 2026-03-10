@@ -3,11 +3,17 @@
  * Replaces the Electron main-process auth module.
  */
 
+import { createLogger, getDebugState, maskValue, nowMs } from './debug.js';
+
 const AUTH_BASE = 'https://accounts.spotify.com';
 export const API_BASE = 'https://api.spotify.com/v1';
 
 const TOKEN_KEY = 'spotifyManager.tokens';
 const SETUP_KEY = 'spotifyManager.setup';
+const PKCE_SESSION_STATE_KEY = 'spotify_pkce_state';
+const PKCE_SESSION_VERIFIER_KEY = 'spotify_pkce_verifier';
+const PKCE_TRANSACTION_KEY = 'spotifyManager.pkceTransaction';
+const API_REQUEST_TIMEOUT_MS = 15000;
 
 const SCOPES = [
   'playlist-read-private',
@@ -16,6 +22,72 @@ const SCOPES = [
   'playlist-modify-public',
   'user-read-private',
 ];
+
+function normalizeScopes(rawScope) {
+  const values = Array.isArray(rawScope)
+    ? rawScope
+    : String(rawScope || '')
+        .split(/\s+/)
+        .map((scope) => scope.trim())
+        .filter(Boolean);
+  return [...new Set(values)].sort();
+}
+
+const dlog = createLogger('auth');
+
+function currentLocationUrl() {
+  try {
+    return new URL(window.location.href);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLoopbackHostname(hostname) {
+  if (hostname === 'localhost' || hostname === '::1' || hostname === '[::1]') {
+    return '127.0.0.1';
+  }
+  return hostname;
+}
+
+function describeTransaction(transaction) {
+  if (!transaction) {
+    return {
+      present: false,
+      state: null,
+      codeVerifier: false,
+      ageMs: null,
+      redirectUri: null,
+    };
+  }
+  return {
+    present: true,
+    state: maskValue(transaction.state),
+    codeVerifier: Boolean(transaction.codeVerifier),
+    ageMs: Number.isFinite(transaction.createdAt) ? Math.max(0, Math.round(Date.now() - transaction.createdAt)) : null,
+    redirectUri: transaction.redirectUri || null,
+  };
+}
+
+function buildStateMismatchMessage({ state, expectedState, transaction, redirectUri }) {
+  const currentOrigin = currentLocationUrl()?.origin || 'unknown origin';
+  const redirectOrigin = (() => {
+    try {
+      return new URL(redirectUri).origin;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!transaction) {
+    const hostHint = redirectOrigin
+      ? ` Open ${redirectOrigin}/ and sign in again.`
+      : ' Sign in again.';
+    return `Authorization state mismatch. No saved PKCE transaction was available on ${currentOrigin}.${hostHint}`;
+  }
+
+  return `Authorization state mismatch. Expected ${maskValue(expectedState)} but received ${maskValue(state)}. Sign in again.`;
+}
 
 function getDefaultRedirectUri() {
   const loc = window.location;
@@ -29,7 +101,7 @@ function getDefaultRedirectUri() {
   }
   if (!port) port = '3000';
   // Spotify disallows localhost in redirect URIs; use explicit loopback literal.
-  return `http://127.0.0.1:${port}/callback`;
+  return `http://127.0.0.1:${port}/api/auth/spotify/callback`;
 }
 
 function isLegacyLoopbackRedirect(uri) {
@@ -53,8 +125,18 @@ function resolveStoredRedirectUri(storedRedirectUri) {
   // Spotify no longer accepts localhost redirect hosts; migrate to explicit IPv4 loopback.
   try {
     const parsed = new URL(candidate);
+    const fallback = new URL(recommended);
+    const usesLegacyCallbackPath = /^\/callback\/?$/i.test(parsed.pathname || '');
+    if (usesLegacyCallbackPath) {
+      parsed.pathname = fallback.pathname;
+      parsed.protocol = 'http:';
+      if (parsed.hostname === 'localhost') {
+        parsed.hostname = '127.0.0.1';
+      }
+      if (!parsed.port) parsed.port = fallback.port;
+      return parsed.toString();
+    }
     if (parsed.hostname === 'localhost') {
-      const fallback = new URL(recommended);
       parsed.hostname = '127.0.0.1';
       parsed.protocol = 'http:';
       if (!parsed.port) parsed.port = fallback.port;
@@ -69,6 +151,79 @@ function resolveStoredRedirectUri(storedRedirectUri) {
 
 export function getRecommendedRedirectUri() {
   return getDefaultRedirectUri();
+}
+
+export function ensureCanonicalLoopbackOrigin() {
+  const current = currentLocationUrl();
+  if (!current) return { redirected: false };
+
+  const normalizedHost = normalizeLoopbackHostname(current.hostname);
+  if (normalizedHost === current.hostname) {
+    return { redirected: false };
+  }
+
+  current.hostname = normalizedHost;
+  const targetUrl = current.toString();
+  dlog('ensureCanonicalLoopbackOrigin:redirect', {
+    from: window.location.href,
+    to: targetUrl,
+  });
+
+  if (typeof window.location.replace === 'function') {
+    window.location.replace(targetUrl);
+  } else {
+    window.location.href = targetUrl;
+  }
+
+  return { redirected: true, url: targetUrl };
+}
+
+function savePkceTransaction(transaction) {
+  const payload = JSON.stringify(transaction);
+  sessionStorage.setItem(PKCE_SESSION_STATE_KEY, transaction.state);
+  sessionStorage.setItem(PKCE_SESSION_VERIFIER_KEY, transaction.codeVerifier);
+  localStorage.setItem(PKCE_TRANSACTION_KEY, payload);
+  dlog('savePkceTransaction', describeTransaction(transaction));
+}
+
+function loadPkceTransaction() {
+  let backup = null;
+  try {
+    backup = JSON.parse(localStorage.getItem(PKCE_TRANSACTION_KEY) || 'null');
+  } catch {
+    backup = null;
+  }
+
+  const sessionState = sessionStorage.getItem(PKCE_SESSION_STATE_KEY);
+  const sessionVerifier = sessionStorage.getItem(PKCE_SESSION_VERIFIER_KEY);
+
+  if (sessionState && sessionVerifier) {
+    const transaction = {
+      state: sessionState,
+      codeVerifier: sessionVerifier,
+      redirectUri: backup?.redirectUri || null,
+      createdAt: backup?.createdAt || Date.now(),
+    };
+    dlog('loadPkceTransaction:session', describeTransaction(transaction));
+    return transaction;
+  }
+
+  if (backup?.state && backup?.codeVerifier) {
+    dlog('loadPkceTransaction:localStorage', describeTransaction(backup));
+    return backup;
+  }
+
+  dlog('loadPkceTransaction:none', {
+    currentOrigin: currentLocationUrl()?.origin || null,
+  });
+  return null;
+}
+
+function clearPkceTransaction() {
+  sessionStorage.removeItem(PKCE_SESSION_STATE_KEY);
+  sessionStorage.removeItem(PKCE_SESSION_VERIFIER_KEY);
+  localStorage.removeItem(PKCE_TRANSACTION_KEY);
+  dlog('clearPkceTransaction');
 }
 
 function normalizeSetupInput({ clientId, redirectUri }) {
@@ -93,7 +248,7 @@ function validateSetupInput({ clientId, redirectUri }) {
   try {
     parsed = new URL(redirectUri);
   } catch {
-    throw new Error('Redirect URI must be a valid absolute URL (for example http://127.0.0.1:8888/callback).');
+    throw new Error('Redirect URI must be a valid absolute URL (for example http://127.0.0.1:3000/api/auth/spotify/callback).');
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
@@ -105,7 +260,7 @@ function validateSetupInput({ clientId, redirectUri }) {
   }
 
   if (parsed.hostname === 'localhost') {
-    throw new Error('Redirect URI cannot use localhost. Use http://127.0.0.1:<port>/callback instead.');
+    throw new Error('Redirect URI cannot use localhost. Use http://127.0.0.1:<port>/api/auth/spotify/callback instead.');
   }
 
   if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
@@ -186,20 +341,40 @@ function saveTokens(payload) {
   const current = loadTokens();
   if (payload.access_token) current.accessToken = payload.access_token;
   if (payload.refresh_token) current.refreshToken = payload.refresh_token;
+  const grantedScopes = normalizeScopes(payload.scope);
+  if (grantedScopes.length) {
+    current.scopes = grantedScopes;
+  }
   if (payload.expires_in) {
     current.expiresAt = Date.now() + Math.max(0, payload.expires_in - 60) * 1000;
   }
   localStorage.setItem(TOKEN_KEY, JSON.stringify(current));
 }
 
+export function getRequestedScopes() {
+  return [...SCOPES];
+}
+
+export function getGrantedScopes() {
+  return normalizeScopes(loadTokens().scopes);
+}
+
+export function getMissingScopes(requiredScopes = SCOPES) {
+  const granted = new Set(getGrantedScopes());
+  return normalizeScopes(requiredScopes).filter((scope) => !granted.has(scope));
+}
+
 // --------------- Auth State ---------------
 
 export function getAuthState() {
   const tokens = loadTokens();
+  const grantedScopes = normalizeScopes(tokens.scopes);
   return {
     authenticated: Boolean(tokens.accessToken && tokens.expiresAt > Date.now()),
     hasRefreshToken: Boolean(tokens.refreshToken),
     expiresAt: tokens.expiresAt || 0,
+    grantedScopes,
+    missingScopes: SCOPES.filter((scope) => !grantedScopes.includes(scope)),
   };
 }
 
@@ -231,12 +406,24 @@ async function toCodeChallenge(verifier) {
 
 export async function beginLogin() {
   const { clientId, redirectUri } = getConfig();
+  const startedAt = nowMs();
   const state = await randomUrlSafe(16);
   const codeVerifier = await randomUrlSafe(64);
   const codeChallenge = await toCodeChallenge(codeVerifier);
 
-  sessionStorage.setItem('spotify_pkce_verifier', codeVerifier);
-  sessionStorage.setItem('spotify_pkce_state', state);
+  dlog('beginLogin:start', {
+    currentOrigin: currentLocationUrl()?.origin || null,
+    redirectUri,
+    clientId: maskValue(clientId),
+    debugEnabled: getDebugState(),
+  });
+
+  savePkceTransaction({
+    state,
+    codeVerifier,
+    redirectUri,
+    createdAt: Date.now(),
+  });
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -249,6 +436,12 @@ export async function beginLogin() {
     show_dialog: 'false',
   });
 
+  dlog('beginLogin:navigate', {
+    authorizationOrigin: AUTH_BASE,
+    redirectUri,
+    transactionAgeMs: Math.round(nowMs() - startedAt),
+    state: maskValue(state),
+  });
   window.location.href = `${AUTH_BASE}/authorize?${params.toString()}`;
 }
 
@@ -257,6 +450,7 @@ export async function beginLogin() {
  * Returns true if tokens were successfully exchanged.
  */
 export async function handleAuthCallback() {
+  const startedAt = nowMs();
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   const state = params.get('state');
@@ -264,19 +458,44 @@ export async function handleAuthCallback() {
 
   if (!code && !error) return false;
 
+  dlog('handleAuthCallback:start', {
+    currentHref: window.location.href,
+    hasCode: Boolean(code),
+    state: maskValue(state),
+    error: error || null,
+  });
+
   // Clean URL immediately
   window.history.replaceState({}, document.title, window.location.pathname);
 
   if (error) throw new Error(`Spotify authorization failed: ${error}`);
 
-  const expectedState = sessionStorage.getItem('spotify_pkce_state');
-  const codeVerifier = sessionStorage.getItem('spotify_pkce_verifier');
-  sessionStorage.removeItem('spotify_pkce_state');
-  sessionStorage.removeItem('spotify_pkce_verifier');
+  const transaction = loadPkceTransaction();
+  const expectedState = transaction?.state || null;
+  const codeVerifier = transaction?.codeVerifier || null;
 
-  if (state !== expectedState) throw new Error('Authorization state mismatch.');
+  dlog('handleAuthCallback:transaction', describeTransaction(transaction));
 
-  const { clientId, redirectUri } = getConfig();
+  let redirectUri = getDefaultRedirectUri();
+  try {
+    redirectUri = getConfig().redirectUri;
+  } catch {
+    // Setup validation can fail before the app is configured; keep the fallback for diagnostics.
+  }
+
+  if (state !== expectedState) {
+    const message = buildStateMismatchMessage({ state, expectedState, transaction, redirectUri });
+    dlog('handleAuthCallback:stateMismatch', {
+      actualState: maskValue(state),
+      expectedState: maskValue(expectedState),
+      redirectUri,
+      transaction: describeTransaction(transaction),
+    });
+    throw new Error(message);
+  }
+  if (!codeVerifier) throw new Error('Authorization code verifier missing. Sign in again.');
+
+  const { clientId } = getConfig();
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -294,10 +513,20 @@ export async function handleAuthCallback() {
 
   if (!response.ok) {
     const text = await response.text();
+    dlog('handleAuthCallback:exchangeFailed', {
+      status: response.status,
+      body: text,
+      durationMs: Math.round(nowMs() - startedAt),
+    });
     throw new Error(`Token exchange failed: ${response.status} ${text}`);
   }
 
   saveTokens(await response.json());
+  clearPkceTransaction();
+  dlog('handleAuthCallback:done', {
+    redirectUri,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
   return true;
 }
 
@@ -307,6 +536,14 @@ async function refreshAccessToken() {
   const tokens = loadTokens();
   if (!tokens.refreshToken) throw new Error('No refresh token. Sign in again.');
   const { clientId } = getConfig();
+  const startedAt = nowMs();
+
+  dlog('refreshAccessToken:start', {
+    hasAccessToken: Boolean(tokens.accessToken),
+    hasRefreshToken: Boolean(tokens.refreshToken),
+    expiresAt: tokens.expiresAt || 0,
+    clientId: maskValue(clientId),
+  });
 
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -322,10 +559,43 @@ async function refreshAccessToken() {
 
   if (!response.ok) {
     const text = await response.text();
+    dlog('refreshAccessToken:failed', {
+      status: response.status,
+      body: text,
+      durationMs: Math.round(nowMs() - startedAt),
+    });
     throw new Error(`Token refresh failed: ${response.status} ${text}`);
   }
 
   saveTokens(await response.json());
+  dlog('refreshAccessToken:done', {
+    durationMs: Math.round(nowMs() - startedAt),
+  });
+}
+
+// --------------- Session Persistence ---------------
+
+/**
+ * Attempt to restore a valid session on startup.
+ * Returns true if the user is now authenticated (token still valid or refreshed).
+ */
+export async function tryAutoRefresh() {
+  const tokens = loadTokens();
+  dlog('tryAutoRefresh:start', {
+    hasAccessToken: Boolean(tokens.accessToken),
+    hasRefreshToken: Boolean(tokens.refreshToken),
+    expiresAt: tokens.expiresAt || 0,
+  });
+  if (tokens.accessToken && tokens.expiresAt > Date.now()) return true;
+  if (!tokens.refreshToken) return false;
+  try {
+    await refreshAccessToken();
+    dlog('tryAutoRefresh:done', { refreshed: true });
+    return true;
+  } catch (error) {
+    dlog('tryAutoRefresh:failed', { message: String(error?.message || error) });
+    return false;
+  }
 }
 
 // --------------- Authenticated Requests ---------------
@@ -334,10 +604,54 @@ async function ensureAccessToken() {
   const tokens = loadTokens();
   if (tokens.accessToken && Date.now() < tokens.expiresAt) return tokens.accessToken;
   if (tokens.refreshToken) {
+    dlog('ensureAccessToken:refreshNeeded', {
+      expiresAt: tokens.expiresAt || 0,
+    });
     await refreshAccessToken();
     return loadTokens().accessToken;
   }
   throw new Error('Not authenticated. Sign in first.');
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = API_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = nowMs();
+
+  try {
+    dlog('fetchWithTimeout:start', {
+      method: options?.method || 'GET',
+      url: url instanceof URL ? url.toString() : String(url),
+      timeoutMs,
+    });
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const path = url instanceof URL ? url.pathname : String(url);
+      dlog('fetchWithTimeout:timeout', {
+        path,
+        timeoutMs,
+      });
+      throw new Error(`Spotify API request timed out after ${Math.round(timeoutMs / 1000)}s: ${path}`);
+    }
+    dlog('fetchWithTimeout:error', {
+      method: options?.method || 'GET',
+      url: url instanceof URL ? url.toString() : String(url),
+      durationMs: Math.round(nowMs() - startedAt),
+      message: String(error?.message || error),
+    });
+    throw error;
+  } finally {
+    dlog('fetchWithTimeout:done', {
+      method: options?.method || 'GET',
+      url: url instanceof URL ? url.toString() : String(url),
+      durationMs: Math.round(nowMs() - startedAt),
+    });
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function spotifyRequest(method, endpointPath, query = {}, body = undefined) {
@@ -349,7 +663,16 @@ export async function spotifyRequest(method, endpointPath, query = {}, body = un
     }
   });
 
-  const response = await fetch(url, {
+  const startedAt = nowMs();
+  dlog('spotifyRequest:start', {
+    method,
+    path: url.pathname,
+    query: Object.fromEntries(url.searchParams.entries()),
+    hasBody: body !== undefined,
+    tokenSuffix: maskValue(token, 6),
+  });
+
+  const response = await fetchWithTimeout(url, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -361,6 +684,10 @@ export async function spotifyRequest(method, endpointPath, query = {}, body = un
   if (response.status === 401) {
     const tokens = loadTokens();
     if (tokens.refreshToken) {
+      dlog('spotifyRequest:retryAfter401', {
+        method,
+        path: url.pathname,
+      });
       await refreshAccessToken();
       return spotifyRequest(method, endpointPath, query, body);
     }
@@ -368,11 +695,25 @@ export async function spotifyRequest(method, endpointPath, query = {}, body = un
 
   if (!response.ok) {
     const text = await response.text();
+    dlog('spotifyRequest:failed', {
+      method,
+      path: url.pathname,
+      status: response.status,
+      durationMs: Math.round(nowMs() - startedAt),
+      body: text,
+    });
     throw new Error(`Spotify API ${response.status} ${method} ${url.pathname}: ${text}`);
   }
 
   if (response.status === 204) return null;
-  return response.json();
+  const result = await response.json();
+  dlog('spotifyRequest:done', {
+    method,
+    path: url.pathname,
+    status: response.status,
+    durationMs: Math.round(nowMs() - startedAt),
+  });
+  return result;
 }
 
 export async function loadCurrentUser() {
