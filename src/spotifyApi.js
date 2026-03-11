@@ -7,6 +7,8 @@ import { getGrantedScopes, getMissingScopes, spotifyRequest } from './auth.js';
 import { createLogger, nowMs } from './debug.js';
 
 const dlog = createLogger('spotify-api');
+const ENDPOINT_AVAILABILITY_KEY = 'spotifyManager.endpointAvailability.v1';
+let endpointAvailabilityCache = null;
 
 function chunk(items, size) {
   const result = [];
@@ -18,6 +20,49 @@ function chunk(items, size) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readEndpointAvailability() {
+  if (endpointAvailabilityCache) {
+    return endpointAvailabilityCache;
+  }
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ENDPOINT_AVAILABILITY_KEY) || '{}');
+    endpointAvailabilityCache = parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    endpointAvailabilityCache = {};
+  }
+
+  return endpointAvailabilityCache;
+}
+
+function persistEndpointAvailability(nextValue) {
+  endpointAvailabilityCache = nextValue;
+  try {
+    localStorage.setItem(ENDPOINT_AVAILABILITY_KEY, JSON.stringify(nextValue));
+  } catch {
+    // Ignore storage failures and keep the session cache only.
+  }
+}
+
+function isEndpointAvailable(endpointKey) {
+  return readEndpointAvailability()[endpointKey] !== false;
+}
+
+function markEndpointUnavailable(endpointKey, reason) {
+  const current = readEndpointAvailability();
+  if (current[endpointKey] === false) {
+    return;
+  }
+  persistEndpointAvailability({
+    ...current,
+    [endpointKey]: false,
+  });
+  dlog('endpoint:disabled', {
+    endpointKey,
+    reason,
+  });
 }
 
 function isSpotifyStatus(error, statusCode) {
@@ -190,9 +235,16 @@ export async function fetchCurrentUserPlaylists() {
       canLoad: Boolean(playlist.id),
     }));
 
-  if (mapped.length && mapped.every((item) => item.totalTracks === 0 && item.canLoad)) {
+  const playlistsNeedingHydration = mapped.filter(
+    (item) => item.canLoad && (!Number.isFinite(item.totalTracks) || item.totalTracks === 0)
+  );
+
+  if (playlistsNeedingHydration.length) {
     const hydrated = await Promise.all(
       mapped.map(async (item) => {
+        if (!playlistsNeedingHydration.some((candidate) => candidate.id === item.id)) {
+          return item;
+        }
         try {
           const details = await spotifyRequest('GET', `/playlists/${item.id}`, {
             fields: 'tracks(total)',
@@ -268,6 +320,16 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
   dlog('fetchAudioFeaturesByIds:start', { count: trackIds.length });
   const result = new Map();
   const blockedTrackIds = new Set();
+
+  if (!isEndpointAvailable('audioFeatures')) {
+    progressCb?.({
+      stage: 'audio-features',
+      message: 'Skipping audio features because Spotify previously returned 403 for this endpoint.',
+      blockedTracks: trackIds.length,
+    });
+    return result;
+  }
+
   const groups = chunk(trackIds, 100);
 
   async function fetchGroupWithFallback(ids) {
@@ -277,21 +339,28 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
       for (const feature of response.audio_features || []) {
         if (feature && feature.id) result.set(feature.id, feature);
       }
-      return;
+      return true;
     } catch (error) {
       const message = String(error?.message || error);
       const isForbidden = message.includes(' 403 ') || message.includes('status" : 403');
       if (!isForbidden) throw error;
+      markEndpointUnavailable('audioFeatures', message);
       ids.forEach((id) => blockedTrackIds.add(id));
+      progressCb?.({
+        stage: 'audio-features',
+        message: 'Spotify blocked audio feature lookup. Continuing without BPM/energy metadata.',
+        blockedTracks: blockedTrackIds.size,
+      });
       dlog('fetchAudioFeaturesByIds:forbiddenBatch', {
         blocked: ids.length,
         totalBlocked: blockedTrackIds.size,
       });
+      return false;
     }
   }
 
   for (let index = 0; index < groups.length; index += 1) {
-    await fetchGroupWithFallback(groups[index]);
+    const completed = await fetchGroupWithFallback(groups[index]);
     if (typeof progressCb === 'function') {
       const blocked = blockedTrackIds.size;
       progressCb({
@@ -303,6 +372,9 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
         totalBatches: groups.length,
         blockedTracks: blocked,
       });
+    }
+    if (completed === false) {
+      break;
     }
   }
   dlog('fetchAudioFeaturesByIds:done', {
@@ -319,12 +391,40 @@ async function fetchArtistsByIds(artistIds, progressCb) {
   const startedAt = nowMs();
   dlog('fetchArtistsByIds:start', { count: artistIds.length });
   const result = new Map();
+
+  if (!isEndpointAvailable('artistMetadata')) {
+    progressCb?.({
+      stage: 'artist-genres',
+      message: 'Skipping artist metadata because Spotify previously returned 403 for this endpoint.',
+      blockedArtists: artistIds.length,
+    });
+    return result;
+  }
+
   const groups = chunk(artistIds, 50);
   for (let index = 0; index < groups.length; index += 1) {
-    const response = await spotifyRequest('GET', '/artists', { ids: groups[index].join(',') });
-    for (const artist of response.artists || []) {
-      if (artist && artist.id) result.set(artist.id, artist);
+    try {
+      const response = await spotifyRequest('GET', '/artists', { ids: groups[index].join(',') });
+      for (const artist of response.artists || []) {
+        if (artist && artist.id) result.set(artist.id, artist);
+      }
+    } catch (error) {
+      if (!isSpotifyStatus(error, 403)) {
+        throw error;
+      }
+      markEndpointUnavailable('artistMetadata', String(error?.message || error));
+      progressCb?.({
+        stage: 'artist-genres',
+        message: 'Spotify blocked artist metadata lookup. Continuing without genre metadata.',
+        blockedArtists: artistIds.length,
+      });
+      dlog('fetchArtistsByIds:forbiddenBatch', {
+        blocked: groups[index].length,
+        processedBatches: index,
+      });
+      break;
     }
+
     if (typeof progressCb === 'function') {
       progressCb({
         stage: 'artist-genres',
@@ -554,6 +654,7 @@ export async function createPlaylistFromTracks(payload) {
     id: created.id,
     url: created.external_urls?.spotify || null,
     name: created.name,
+    totalTracks: uris.length,
   };
 }
 

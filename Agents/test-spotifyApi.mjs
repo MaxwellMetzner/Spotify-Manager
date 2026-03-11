@@ -130,6 +130,70 @@ test('fetchCurrentUserPlaylists returns mapped playlist list', async () => {
   }
 });
 
+test('fetchCurrentUserPlaylists hydrates zero-count playlists individually', async () => {
+  installBrowserGlobals();
+  try {
+    const detailCalls = [];
+    globalThis.fetch = async (urlOrStr) => {
+      const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
+      if (url.pathname === '/v1/me/playlists') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [
+              {
+                id: 'pl1', name: 'Empty Looking', type: 'playlist',
+                tracks: { total: 0 },
+                owner: { display_name: 'user123', id: 'user123' },
+                collaborative: false, public: false,
+                snapshot_id: 'snap1',
+              },
+              {
+                id: 'pl2', name: 'Known Count', type: 'playlist',
+                tracks: { total: 9 },
+                owner: { display_name: 'user123', id: 'user123' },
+                collaborative: false, public: true,
+                snapshot_id: 'snap2',
+              },
+            ],
+            next: null,
+          }),
+        };
+      }
+
+      if (url.pathname === '/v1/playlists/pl1') {
+        detailCalls.push(url.pathname);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ tracks: { total: 14 } }),
+        };
+      }
+
+      if (url.pathname === '/v1/playlists/pl2') {
+        detailCalls.push(url.pathname);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ tracks: { total: 9 } }),
+        };
+      }
+
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    };
+
+    const api = await importApi();
+    const playlists = await api.fetchCurrentUserPlaylists();
+
+    assert.equal(playlists[0].totalTracks, 14);
+    assert.equal(playlists[1].totalTracks, 9);
+    assert.deepEqual(detailCalls, ['/v1/playlists/pl1']);
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
 test('fetchPlaylistWithMetadata hydrates tracks with audio features and artist genres', async () => {
   installBrowserGlobals();
   try {
@@ -193,6 +257,79 @@ test('fetchPlaylistWithMetadata hydrates tracks with audio features and artist g
     assert.equal(track.isrc, 'US1234567890');
     assert.equal(track.metadataSource.audioFeatures, true);
     assert.equal(track.metadataSource.artistGenres, true);
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('fetchPlaylistWithMetadata disables blocked enrichment endpoints after Spotify 403 responses', async () => {
+  installBrowserGlobals();
+  try {
+    let audioFeatureCalls = 0;
+    let artistCalls = 0;
+    const trackItem = {
+      track: {
+        id: 'tr1', type: 'track', name: 'Blocked Song', uri: 'spotify:track:tr1',
+        artists: [{ id: 'ar1', name: 'Artist One' }],
+        album: { id: 'al1', name: 'Album One', release_date: '2020-05-10', album_type: 'album' },
+        duration_ms: 210000, explicit: false, popularity: 75,
+      },
+      added_at: '2021-01-15T12:00:00Z',
+      added_by: { id: 'user1' },
+      is_local: false,
+    };
+
+    globalThis.fetch = async (urlOrStr) => {
+      const url = urlOrStr instanceof URL ? urlOrStr : new URL(urlOrStr);
+
+      if (url.pathname === '/v1/playlists/pl1') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'pl1', name: 'Blocked Metadata', description: '', tracks: { total: 1 },
+            owner: { display_name: 'owner', id: 'owner' },
+            public: true, collaborative: false, snapshot_id: 'snap',
+            followers: { total: 10 },
+            images: [],
+            external_urls: { spotify: 'https://open.spotify.com/playlist/pl1' },
+          }),
+        };
+      }
+
+      if (url.pathname === '/v1/playlists/pl1/items') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [trackItem], total: 1, next: null }),
+        };
+      }
+
+      if (url.pathname === '/v1/audio-features') {
+        audioFeatureCalls += 1;
+        return { ok: false, status: 403, text: async () => 'Forbidden' };
+      }
+
+      if (url.pathname === '/v1/artists') {
+        artistCalls += 1;
+        return { ok: false, status: 403, text: async () => 'Forbidden' };
+      }
+
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    };
+
+    const api = await importApi();
+    const first = await api.fetchPlaylistWithMetadata('pl1');
+    const second = await api.fetchPlaylistWithMetadata('pl1');
+
+    assert.equal(first.tracks.length, 1);
+    assert.equal(second.tracks.length, 1);
+    assert.equal(first.tracks[0].metadataSource.audioFeatures, false);
+    assert.equal(first.tracks[0].metadataSource.artistGenres, false);
+    assert.equal(audioFeatureCalls, 1);
+    assert.equal(artistCalls, 1);
+    assert.equal(JSON.parse(localStorage.getItem('spotifyManager.endpointAvailability.v1')).audioFeatures, false);
+    assert.equal(JSON.parse(localStorage.getItem('spotifyManager.endpointAvailability.v1')).artistMetadata, false);
   } finally {
     cleanupBrowserGlobals();
   }

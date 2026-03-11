@@ -67,6 +67,7 @@ const state = {
   auth: null,
   user: null,
   playlists: [],
+  playlistTrackCountHints: {},
   selectedPlaylistId: null,
   selectedPlaylistMeta: null,
   baseTracks: [],
@@ -270,12 +271,88 @@ function cloneTracks(tracks) {
   return JSON.parse(JSON.stringify(tracks || []));
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function setPlaylistTrackCountHint(playlistId, totalTracks) {
+  if (!playlistId || !Number.isFinite(totalTracks)) return;
+  state.playlistTrackCountHints[playlistId] = totalTracks;
+  if (state.selectedPlaylistId === playlistId && state.selectedPlaylistMeta) {
+    state.selectedPlaylistMeta.totalTracks = totalTracks;
+  }
+}
+
+function applyPlaylistTrackCountHints(playlists) {
+  return (playlists || []).map((playlist) => {
+    const hintedCount = state.playlistTrackCountHints[playlist.id];
+    if (!Number.isFinite(hintedCount)) {
+      return playlist;
+    }
+    const playlistCount = Number(playlist?.totalTracks);
+    if (Number.isFinite(playlistCount) && playlistCount >= hintedCount) {
+      return playlist;
+    }
+    return {
+      ...playlist,
+      totalTracks: hintedCount,
+    };
+  });
+}
+
+function upsertPlaylistSummary(summary) {
+  if (!summary?.id) return;
+  if (Number.isFinite(summary.totalTracks)) {
+    setPlaylistTrackCountHint(summary.id, summary.totalTracks);
+  }
+
+  const normalized = applyPlaylistTrackCountHints([
+    {
+      description: '',
+      owner: state.user?.display_name || state.user?.id || 'You',
+      collaborative: false,
+      isPublic: false,
+      snapshotId: null,
+      imageUrl: null,
+      href: null,
+      canLoad: true,
+      ...summary,
+    },
+  ])[0];
+
+  const existingIndex = state.playlists.findIndex((playlist) => playlist.id === normalized.id);
+  if (existingIndex >= 0) {
+    state.playlists[existingIndex] = {
+      ...state.playlists[existingIndex],
+      ...normalized,
+    };
+  } else {
+    state.playlists = [normalized, ...state.playlists];
+  }
+}
+
+function setStatusBubble(id, text, { tone = 'info' } = {}) {
+  const el = get(id);
+  if (!el) return;
+  const normalizedText = String(text || '').trim();
+  el.textContent = normalizedText;
+  el.classList.remove('is-info', 'is-success', 'is-error');
+  if (!normalizedText) {
+    return;
+  }
+  el.classList.add(
+    tone === 'error' ? 'is-error' : tone === 'success' ? 'is-success' : 'is-info'
+  );
+}
+
 function setMessage(text, isError = false) {
   dlog('status', { text, isError });
-  const el = get('messages');
-  if (!el) return;
-  el.textContent = text;
-  el.style.color = isError ? '#ff9175' : '#9fd6c5';
+  setStatusBubble('messages', text, { tone: isError ? 'error' : 'success' });
 }
 
 function readDebugQueryOverride() {
@@ -309,11 +386,11 @@ function updateDebugControls() {
   const panelToggleBtn = get('toggleDebugPanelBtn');
 
   if (toggleBtn) {
-    toggleBtn.textContent = enabled ? 'Debug: On' : 'Debug: Off';
+    toggleBtn.textContent = enabled ? 'Debug On' : 'Debug Off';
     toggleBtn.classList.toggle('btn-primary', enabled);
   }
   if (panelToggleBtn) {
-    panelToggleBtn.textContent = visible ? 'Hide Debug Log' : 'Show Debug Log';
+    panelToggleBtn.textContent = visible ? 'Hide Log' : 'Debug Log';
   }
 
   get('copyDebugLogBtn')?.classList.toggle('hidden', !visible);
@@ -429,9 +506,7 @@ function installDebugControls() {
 }
 
 function setSetupMessage(text, isError = false) {
-  const el = get('setupModalStatus');
-  el.textContent = text;
-  el.style.color = isError ? '#ff9175' : '#9fd6c5';
+  setStatusBubble('setupModalStatus', text, { tone: isError ? 'error' : 'success' });
 }
 
 function fmt(value, digits = 3) {
@@ -553,18 +628,54 @@ function activeColumns() {
   return columns.filter(([field]) => state.columnConfig[field]?.visible !== false);
 }
 
+function getColumnLabel(field) {
+  return columns.find(([columnField]) => columnField === field)?.[1] || field;
+}
+
 function buildHeaderTitle(label, field) {
   const config = getHeaderFilterConfig(field);
   if (config.kind === 'none') {
     return `<span class="header-title">${label}</span>`;
   }
   const activeClass = isHeaderFieldFiltered(field) ? 'is-active' : '';
-  return `<span class="header-title">${label}<span class="header-filter-icon ${activeClass}" title="Right-click to filter"></span></span>`;
+  return `<span class="header-title">${label}<span class="header-filter-icon ${activeClass}" title="Click to filter"></span></span>`;
+}
+
+function resolveHeaderFilterPopupPosition(event, column) {
+  if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
+    return { left: event.clientX, top: event.clientY };
+  }
+
+  const rect = column?.getElement?.()?.getBoundingClientRect?.();
+  if (rect) {
+    return {
+      left: rect.left + rect.width / 2,
+      top: rect.bottom + 8,
+    };
+  }
+
+  return {
+    left: window.innerWidth / 2,
+    top: 140,
+  };
+}
+
+function handleHeaderFilterClick(field, event, column) {
+  const filterConfig = getHeaderFilterConfig(field);
+  if (filterConfig.kind === 'none') {
+    return;
+  }
+  if (!event?.target?.closest?.('.header-filter-icon')) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const position = resolveHeaderFilterPopupPosition(event, column);
+  openHeaderFilterPopup(field, position.left, position.top);
 }
 
 function buildTabulatorColumns() {
   return activeColumns().map(([field, label]) => {
-    const filterConfig = getHeaderFilterConfig(field);
     const width = state.columnConfig[field]?.width || 140;
     return {
       title: buildHeaderTitle(label, field),
@@ -572,22 +683,8 @@ function buildTabulatorColumns() {
       width,
       headerSort: true,
       resizable: true,
-      headerContextMenu: (event) => {
-        if (filterConfig.kind === 'none') return [];
-        return [
-          {
-            label: 'Filter...',
-            action: () => {
-              setTimeout(() => openHeaderFilterPopup(field, event.clientX, event.clientY), 0);
-            },
-          },
-          {
-            label: 'Clear Filter',
-            action: () => {
-              clearFieldFilter(field);
-            },
-          },
-        ];
+      headerClick: (event, column) => {
+        handleHeaderFilterClick(field, event, column);
       },
       formatter: (cell) => fmt(cell.getValue()),
     };
@@ -746,7 +843,7 @@ function clearFieldFilter(field) {
     setFilterInputValue(config.inputId, '');
   }
   applyCurrentFilters();
-  setMessage(`Cleared header filter on ${field}.`);
+  setMessage(`Cleared header filter on ${getColumnLabel(field)}.`);
 }
 
 function renderActiveFilterPills(filters) {
@@ -760,12 +857,12 @@ function renderActiveFilterPills(filters) {
     .map((filter) => {
       const prefix = filter.negate ? 'NOT ' : '';
       if (filter.kind === 'range' || filter.kind === 'yearRange') {
-        return `<span class="filter-pill">${prefix}${filter.field}: ${filter.min || '-inf'} to ${filter.max || 'inf'}</span>`;
+        return `<button class="filter-pill" type="button" data-filter-field="${filter.field}" title="Clear ${getColumnLabel(filter.field)} filter">${prefix}${getColumnLabel(filter.field)}: ${filter.min || '-inf'} to ${filter.max || 'inf'}</button>`;
       }
       if (filter.kind === 'set') {
-        return `<span class="filter-pill">${prefix}${filter.field}: ${filter.values.join(', ')}</span>`;
+        return `<button class="filter-pill" type="button" data-filter-field="${filter.field}" title="Clear ${getColumnLabel(filter.field)} filter">${prefix}${getColumnLabel(filter.field)}: ${filter.values.join(', ')}</button>`;
       }
-      return `<span class="filter-pill">${prefix}${filter.field}: ${filter.query}</span>`;
+      return `<button class="filter-pill" type="button" data-filter-field="${filter.field}" title="Clear ${getColumnLabel(filter.field)} filter">${prefix}${getColumnLabel(filter.field)}: ${filter.query}</button>`;
     })
     .join('');
 }
@@ -1011,7 +1108,7 @@ function openHeaderFilterPopup(field, clientX, clientY) {
   const popup = get('headerFilterPopup');
   popup.dataset.field = field;
   popup.dataset.kind = config.kind;
-  get('headerFilterTitle').textContent = `Filter: ${field}`;
+  get('headerFilterTitle').textContent = `Filter: ${getColumnLabel(field)}`;
 
   const minRow = get('headerFilterMinRow');
   const maxRow = get('headerFilterMaxRow');
@@ -1321,7 +1418,16 @@ function renderPlaylists() {
       const active = playlist.id === state.selectedPlaylistId ? 'active' : '';
       const disabled = playlist.canLoad === false ? 'disabled' : '';
       const countText = Number.isFinite(playlist.totalTracks) ? playlist.totalTracks : '?';
-      return `<li><button class="${active}" data-playlist-id="${playlist.id}" ${disabled}>${playlist.name} <span class="subtle">(${countText})</span></button></li>`;
+      return `
+        <li>
+          <button class="${active}" data-playlist-id="${playlist.id}" aria-pressed="${String(active === 'active')}" ${disabled}>
+            <span class="playlist-item-main">
+              <span class="playlist-name">${escapeHtml(playlist.name)}</span>
+            </span>
+            <span class="playlist-count-badge">${escapeHtml(countText)}</span>
+          </button>
+        </li>
+      `;
     })
     .join('');
 
@@ -1330,24 +1436,35 @@ function renderPlaylists() {
   });
 
   const bulk = get('bulkPlaylistSelect');
-  bulk.innerHTML = state.playlists
-    .map((playlist) => `<option value="${playlist.id}">${playlist.name} (${playlist.totalTracks})</option>`)
-    .join('');
+  if (bulk) {
+    bulk.innerHTML = state.playlists
+      .map((playlist) => `<option value="${playlist.id}">${playlist.name} (${playlist.totalTracks})</option>`)
+      .join('');
+  }
 }
 
 function renderAuthState() {
   const auth = state.auth;
   const loginBtn = get('loginBtn');
   const logoutBtn = get('logoutBtn');
-  get('authStatus').textContent = auth?.authenticated ? 'Connected to Spotify' : 'Not signed in';
-  loginBtn.disabled = Boolean(auth?.authenticated);
+  const isConfigured = Boolean(state.setup?.hasClientId);
+  const canLogin = isConfigured && !auth?.authenticated;
+  const authStatusText = auth?.authenticated
+    ? 'Connected to Spotify'
+    : isConfigured
+      ? 'Not signed in'
+      : 'Configure Spotify app details to sign in';
+  setStatusBubble('authStatus', authStatusText, { tone: auth?.authenticated ? 'success' : 'info' });
+  loginBtn.disabled = !canLogin;
   logoutBtn.disabled = !auth?.authenticated;
 
   if (auth?.authenticated) {
     const label = state.user?.display_name || state.user?.id || 'Signed In';
     loginBtn.textContent = label;
+    loginBtn.classList.remove('btn-primary');
   } else {
     loginBtn.textContent = 'Sign In With Spotify';
+    loginBtn.classList.add('btn-primary');
   }
 }
 
@@ -1356,9 +1473,11 @@ function renderSetupState() {
   if (!setup) return;
   const setupBtn = get('openSetupWizardBtn');
   const recommendedRedirect = auth.getRecommendedRedirectUri();
-  get('setupStatus').textContent = setup.hasClientId
-    ? `Configured Client ID: ${setup.clientIdMasked}`
-    : 'SPOTIFY_CLIENT_ID missing. Open setup wizard.';
+  setStatusBubble(
+    'setupStatus',
+    setup.hasClientId ? `Configured Client ID: ${setup.clientIdMasked}` : 'Spotify app setup required.',
+    { tone: setup.hasClientId ? 'info' : 'error' }
+  );
   setupBtn.classList.remove('hidden');
   get('setupRedirectUri').value = setup.redirectUri || recommendedRedirect;
 
@@ -1543,9 +1662,34 @@ function closeCsvImportModal() {
 }
 
 function setCsvImportStatus(text, isError = false) {
-  const el = get('csvImportStatus');
-  el.textContent = text;
-  el.style.color = isError ? '#ff9175' : '#9fd6c5';
+  setStatusBubble('csvImportStatus', text, { tone: isError ? 'error' : 'success' });
+}
+
+function setBusyOverlay(visible, title = 'Working...', detail = 'Please wait.') {
+  const overlay = get('busyOverlay');
+  if (!overlay) return;
+  overlay.classList.toggle('hidden', !visible);
+  const titleEl = get('busyOverlayTitle');
+  const detailEl = get('busyOverlayStatus');
+  if (titleEl) {
+    titleEl.textContent = title;
+  }
+  if (detailEl) {
+    detailEl.textContent = detail;
+  }
+}
+
+function waitForNextPaint() {
+  return new Promise((resolve) => {
+    const raf = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => setTimeout(callback, 16);
+    raf(() => raf(resolve));
+  });
+}
+
+function yieldToBrowser() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 async function importCsvAndCloseModal(file, csvInput = null) {
@@ -1555,8 +1699,14 @@ async function importCsvAndCloseModal(file, csvInput = null) {
     fileSize: file.size || null,
   });
   closeCsvImportModal();
+  setBusyOverlay(true, 'Importing CSV', `Reading ${file.name}...`);
   try {
-    await handleCsvFileImport(file);
+    await waitForNextPaint();
+    await handleCsvFileImport(file, ({ message }) => {
+      if (message) {
+        setBusyOverlay(true, 'Importing CSV', message);
+      }
+    });
     setCsvImportStatus(`Imported: ${file.name}`);
     dlog('importCsv:done', {
       fileName: file.name,
@@ -1575,14 +1725,17 @@ async function importCsvAndCloseModal(file, csvInput = null) {
     if (csvInput) {
       csvInput.value = '';
     }
+    setBusyOverlay(false);
   }
 }
 
-function parseCsvText(content) {
+async function parseCsvTextAsync(content, progressCb = null) {
   const rows = [];
   let current = '';
   let row = [];
   let inQuotes = false;
+  const totalLength = content.length || 1;
+  const chunkSize = 25000;
 
   for (let i = 0; i < content.length; i += 1) {
     const char = content[i];
@@ -1612,6 +1765,16 @@ function parseCsvText(content) {
       continue;
     }
     current += char;
+
+    if (i > 0 && i % chunkSize === 0) {
+      if (typeof progressCb === 'function') {
+        progressCb({
+          stage: 'parse',
+          message: `Parsing CSV... ${Math.min(99, Math.round((i / totalLength) * 100))}%`,
+        });
+      }
+      await yieldToBrowser();
+    }
   }
 
   if (current.length > 0 || row.length > 0) {
@@ -1683,7 +1846,7 @@ function toCamelotFromKeyMode(key, mode) {
   return m === 1 ? major[k] || null : minor[k] || null;
 }
 
-function csvRowsToTracks(rows) {
+async function csvRowsToTracksAsync(rows, progressCb = null) {
   if (rows.length < 2) return [];
   const header = rows[0].map((item) => String(item || '').trim());
   const indexMap = new Map(header.map((name, idx) => [name, idx]));
@@ -1693,6 +1856,7 @@ function csvRowsToTracks(rows) {
   };
 
   const tracks = [];
+  const totalRows = Math.max(1, rows.length - 1);
   for (let i = 1; i < rows.length; i += 1) {
     const cells = rows[i];
     if (!cells || !cells.length) continue;
@@ -1740,6 +1904,16 @@ function csvRowsToTracks(rows) {
       camelot: toCamelotFromKeyMode(key, mode),
       analysisAvailable: false,
     });
+
+    if (i > 0 && i % 200 === 0) {
+      if (typeof progressCb === 'function') {
+        progressCb({
+          stage: 'rows',
+          message: `Mapping tracks... ${Math.min(99, Math.round(((i - 1) / totalRows) * 100))}%`,
+        });
+      }
+      await yieldToBrowser();
+    }
   }
   dlog('csvRowsToTracks', {
     rowCount: rows.length,
@@ -1749,15 +1923,18 @@ function csvRowsToTracks(rows) {
   return tracks;
 }
 
-async function handleCsvFileImport(file) {
+async function handleCsvFileImport(file, progressCb = null) {
   if (!file) return;
   dlog('handleCsvFileImport:start', {
     fileName: file.name,
     fileSize: file.size || null,
   });
+  progressCb?.({ stage: 'read', message: 'Reading file...' });
   const text = await file.text();
-  const rows = parseCsvText(text);
-  const tracks = csvRowsToTracks(rows);
+  progressCb?.({ stage: 'parse', message: 'Parsing CSV...' });
+  const rows = await parseCsvTextAsync(text, progressCb);
+  progressCb?.({ stage: 'rows', message: 'Mapping tracks...' });
+  const tracks = await csvRowsToTracksAsync(rows, progressCb);
   if (!tracks.length) {
     throw new Error('No track rows found in CSV.');
   }
@@ -1788,6 +1965,7 @@ async function handleCsvFileImport(file) {
   await setSourceMode('csv');
   renderPlaylists();
   renderPlaylistHeader();
+  progressCb?.({ stage: 'render', message: 'Rendering imported tracks...' });
   await renderCurrentView({ resetScroll: true, rebuildColumns: true });
   renderDuplicates();
   renderTransitionDiagnostics();
@@ -1799,127 +1977,87 @@ async function handleCsvFileImport(file) {
   setMessage(`Imported CSV "${name}" with ${tracks.length} tracks.`);
 }
 
-function showNearDuplicateModal() {
-  get('nearDuplicateModal').classList.remove('hidden');
-}
-
-function hideNearDuplicateModal() {
-  get('nearDuplicateModal').classList.add('hidden');
-}
-
 function renderDuplicates() {
   if (!state.duplicateReport) {
     get('dedupeResults').textContent = 'No dedupe analysis run yet.';
     return;
   }
-  const { exactGroups, nearGroups } = state.duplicateReport;
-  const section = [];
-  section.push(`<div>Exact duplicate groups: ${exactGroups.length}</div>`);
-  exactGroups.forEach((group) => {
-    section.push(
-      `<div>${group.map((entry) => `${entry.track.title} (${entry.track.artistDisplay})`).join(' | ')}</div>`
-    );
-  });
-  section.push(`<div>Near duplicate groups: ${nearGroups.length}</div>`);
-  nearGroups.forEach((group) => {
-    section.push(
-      `<div>${group
-        .map((entry) => `${entry.track.title} [keep:${entry.keepScore}] [match:${entry.pairScore}]`)
-        .join(' | ')}</div>`
-    );
-  });
-  get('dedupeResults').innerHTML = section.join('<hr/>');
-}
-
-function renderNearDuplicateModal() {
-  const root = get('nearDuplicateGroups');
-  if (!state.duplicateReport?.nearGroups?.length) {
-    root.innerHTML = '<div class="subtle">No near-duplicate groups found for this playlist.</div>';
+  const { exactGroups, nearGroups, mergeGroups = [] } = state.duplicateReport;
+  if (!mergeGroups.length) {
+    get('dedupeResults').innerHTML = '<div class="subtle">No duplicate groups found in this playlist.</div>';
     return;
   }
 
-  root.innerHTML = state.duplicateReport.nearGroups
+  const summary = `<div class="results-summary">Found ${exactGroups.length} exact group(s) and ${nearGroups.length} near-duplicate group(s). Checked tracks will be removed when you apply merge.</div>`;
+  const groupsHtml = mergeGroups
     .map((group, groupIndex) => {
-      const bestScore = Math.max(...group.map((item) => item.keepScore || 0));
-      const items = group
-        .map((entry, trackIndex) => {
-          const id = `nearDup-${groupIndex}-${trackIndex}`;
-          const isRecommended = entry.keepScore === bestScore;
-          return `
-            <label class="modal-track-row" for="${id}">
-              <input id="${id}" type="checkbox" data-group-index="${groupIndex}" data-track-index="${trackIndex}" checked />
-              <span>${entry.track.title} - ${entry.track.artistDisplay} | keep:${entry.keepScore} | match:${entry.pairScore}</span>
-              ${isRecommended ? '<span class="recommended-chip">recommended</span>' : ''}
-            </label>
-          `;
-        })
-        .join('');
-      return `<div class="modal-group"><strong>Group ${groupIndex + 1}</strong>${items}</div>`;
+      const kindLabel = group.kind === 'exact' ? 'Exact Match' : 'Possible Duplicate';
+      const leadTrack = group.items[0]?.track;
+      return `
+        <div class="diagnostic-item dedupe-group-card">
+          <div class="diagnostic-line">
+            <span class="diagnostic-title">${escapeHtml(kindLabel)} ${groupIndex + 1}${leadTrack ? `: ${escapeHtml(leadTrack.title)}` : ''}</span>
+            <span class="diagnostic-metrics">${group.items.length} tracks</span>
+          </div>
+          ${group.items
+            .map(
+              (entry) => `
+                <label class="dedupe-choice">
+                  <input type="checkbox" data-track-index="${entry.index}" ${entry.removeByDefault ? 'checked' : ''} />
+                  <span class="dedupe-choice-main">${escapeHtml(entry.track.title)}<span class="subtle-inline">${escapeHtml(entry.track.artistDisplay || 'Unknown Artist')}</span></span>
+                  <span class="dedupe-choice-meta">keep:${fmt(entry.keepScore, 4)}${group.kind === 'near' ? ` | match:${fmt(entry.pairScore, 1)}` : ''}</span>
+                  ${entry.recommendedKeep ? '<span class="recommended-chip">keep</span>' : ''}
+                </label>
+              `
+            )
+            .join('')}
+        </div>
+      `;
     })
     .join('');
+
+  get('dedupeResults').innerHTML = `${summary}${groupsHtml}`;
 }
 
-function keepRecommendedOnly() {
-  const checkboxes = Array.from(get('nearDuplicateGroups').querySelectorAll('input[type="checkbox"]'));
-  checkboxes.forEach((box) => {
-    box.checked = false;
-  });
-  state.duplicateReport.nearGroups.forEach((group, groupIndex) => {
-    const best = group.reduce((acc, item, index) => {
-      if (!acc || item.keepScore > acc.keepScore) {
-        return { keepScore: item.keepScore, index };
-      }
-      return acc;
-    }, null);
-    if (best) {
-      const recommended = get(`nearDup-${groupIndex}-${best.index}`);
-      if (recommended) recommended.checked = true;
-    }
-  });
-}
+function applySelectedDuplicateMerges() {
+  const checked = Array.from(get('dedupeResults').querySelectorAll('input[data-track-index]:checked'))
+    .map((input) => Number(input.dataset.trackIndex))
+    .filter((value) => Number.isInteger(value) && value >= 0);
 
-function applyNearDuplicateChoices() {
-  if (!state.duplicateReport?.nearGroups?.length) {
-    hideNearDuplicateModal();
+  if (!checked.length) {
+    setMessage('No duplicate tracks are checked for removal.');
     return;
   }
 
-  const unchecked = Array.from(
-    get('nearDuplicateGroups').querySelectorAll('input[type="checkbox"]:not(:checked)')
-  );
-  const removeSet = new Set();
-
-  unchecked.forEach((checkbox) => {
-    const groupIndex = Number(checkbox.dataset.groupIndex);
-    const trackIndex = Number(checkbox.dataset.trackIndex);
-    const entry = state.duplicateReport?.nearGroups?.[groupIndex]?.[trackIndex];
-    if (entry?.track) {
-      removeSet.add(entry.track);
-    }
-  });
-
-  if (!removeSet.size) {
-    setMessage('No near-duplicate tracks were removed.');
-    hideNearDuplicateModal();
+  const removeSet = new Set(checked);
+  const nextTracks = state.workingTracks.filter((_, index) => !removeSet.has(index));
+  const removedCount = state.workingTracks.length - nextTracks.length;
+  if (!removedCount) {
+    setMessage('No duplicate tracks were removed.');
     return;
   }
 
-  const nextTracks = state.workingTracks.filter((track) => !removeSet.has(track));
-  commitWorkingTracks(nextTracks, `Removed ${removeSet.size} near-duplicate tracks`);
-  hideNearDuplicateModal();
-  setMessage(`Removed ${removeSet.size} near-duplicate track(s).`);
+  commitWorkingTracks(nextTracks, `Merged duplicates and removed ${removedCount} track(s)`);
+  state.duplicateReport = analysis.findDuplicates(state.workingTracks);
+  renderDuplicates();
+  setMessage(`Removed ${removedCount} duplicate track(s).`);
 }
 
 function renderOutliers() {
-  const report = analysis.detectOutliers(state.workingTracks).slice(0, 12);
+  const report = analysis.detectOutliers(state.workingTracks);
   const html = report
     .map(
-      ({ track, outlierScore, strongestReason }) =>
-        `<div><strong>${track.title}</strong> - ${track.artistDisplay} | score: ${outlierScore}<br/>${
-          strongestReason || 'Audio profile deviates from playlist center.'
-        }</div>`
+      ({ track, outlierScore, strongestReason, reasons }) => `
+        <div class="diagnostic-item">
+          <div class="diagnostic-line">
+            <span class="diagnostic-title">${escapeHtml(track.title)}<span class="subtle-inline">${escapeHtml(track.artistDisplay || 'Unknown Artist')}</span></span>
+            <span class="diagnostic-metrics">score:${fmt(outlierScore, 3)}</span>
+          </div>
+          <div class="diagnostic-reason">${escapeHtml(strongestReason || reasons?.[0] || 'Audio profile deviates from playlist center.')}</div>
+        </div>
+      `
     )
-    .join('<hr/>');
+    .join('');
   get('outliersResult').innerHTML = html || 'No outliers detected.';
 }
 
@@ -1990,18 +2128,19 @@ function renderTransitionDiagnostics() {
     get('transitionResults').textContent = 'Need at least 2 tracks for diagnostics.';
     return;
   }
-  const diagnostics = analysis
-    .computeTransitionDiagnostics(state.workingTracks, getMixOptions())
-    .slice(0, 40);
+  const diagnostics = analysis.computeTransitionDiagnostics(state.workingTracks, getMixOptions());
   get('transitionResults').innerHTML = diagnostics
     .map(
-      (row) =>
-        `<div>${row.index + 1}. ${row.fromTitle} -> ${row.toTitle} | score:${row.score} | dBPM:${fmt(
-          row.bpmDelta,
-          2
-        )} | camelot:${row.camelotDistance}</div>`
+      (row) => `
+        <div class="diagnostic-item transition-item">
+          <div class="diagnostic-line">
+            <span class="diagnostic-title">${escapeHtml(`${row.index + 1}. ${row.fromTitle} → ${row.toTitle}`)}</span>
+            <span class="diagnostic-metrics">score:${fmt(row.score, 3)} | dBPM:${fmt(row.bpmDelta, 2)} | camelot:${fmt(row.camelotDistance, 3)}</span>
+          </div>
+        </div>
+      `
     )
-    .join('<hr/>');
+    .join('');
 }
 
 async function refreshSetupState() {
@@ -2045,7 +2184,7 @@ async function loadPlaylists() {
     renderPlaylists();
     return;
   }
-  state.playlists = await api.fetchCurrentUserPlaylists();
+  state.playlists = applyPlaylistTrackCountHints(await api.fetchCurrentUserPlaylists());
   dlog('loadPlaylists:done', {
     count: state.playlists.length,
   });
@@ -2099,7 +2238,15 @@ async function loadPlaylist(playlistId) {
       return;
     }
 
+    setPlaylistTrackCountHint(payload.playlist.id, payload.playlist.totalTracks);
     state.selectedPlaylistMeta = payload.playlist;
+    state.playlists = applyPlaylistTrackCountHints(
+      state.playlists.map((playlist) =>
+        playlist.id === playlistId
+          ? { ...playlist, totalTracks: payload.playlist.totalTracks }
+          : playlist
+      )
+    );
     state.baseTracks = payload.tracks.map((track, index) => ({ ...track, customOrder: index }));
     state.workingTracks = cloneTracks(state.baseTracks);
     state.filteredTracks = [];
@@ -2250,8 +2397,19 @@ function openExportReviewModal(payload) {
         public: false,
         trackUris: uris,
       });
+      upsertPlaylistSummary({
+        id: result.id,
+        name: result.name,
+        totalTracks: payload.uriCount,
+      });
       closeExportReviewModal();
       await loadPlaylists();
+      upsertPlaylistSummary({
+        id: result.id,
+        name: result.name,
+        totalTracks: payload.uriCount,
+      });
+      renderPlaylists();
       setMessage(`Export complete: ${result.name}`);
     } catch (error) {
       const msg = String(error?.message || error);
@@ -2518,29 +2676,11 @@ async function bindEvents() {
     if (!state.workingTracks.length) return;
     state.duplicateReport = analysis.findDuplicates(state.workingTracks);
     renderDuplicates();
-    renderNearDuplicateModal();
-    const nearCount = state.duplicateReport?.nearGroups?.length || 0;
-    setMessage(`Duplicate analysis complete. Near-duplicate groups: ${nearCount}.`);
+    const totalGroups = state.duplicateReport?.mergeGroups?.length || 0;
+    setMessage(`Duplicate analysis complete. Review ${totalGroups} group(s) below.`);
   });
 
-  get('resolveNearDuplicatesBtn').addEventListener('click', () => {
-    if (!state.workingTracks.length) return;
-    state.duplicateReport = analysis.findDuplicates(state.workingTracks);
-    renderNearDuplicateModal();
-    showNearDuplicateModal();
-  });
-
-  get('applyExactDedupeBtn').addEventListener('click', () => {
-    if (!state.workingTracks.length) return;
-    state.duplicateReport = analysis.findDuplicates(state.workingTracks);
-    const deduped = analysis.dedupeKeepHighestPopularity(state.workingTracks, state.duplicateReport);
-    commitWorkingTracks(deduped, 'Applied exact dedupe');
-    setMessage('Exact dedupe applied (kept highest popularity versions).');
-  });
-
-  get('closeNearDuplicateModalBtn').addEventListener('click', hideNearDuplicateModal);
-  get('applyNearDuplicateChoicesBtn').addEventListener('click', applyNearDuplicateChoices);
-  get('keepRecommendedOnlyBtn').addEventListener('click', keepRecommendedOnly);
+  get('applyDedupeSelectionsBtn').addEventListener('click', applySelectedDuplicateMerges);
 
   get('shuffleBtn').addEventListener('click', () => {
     if (!state.workingTracks.length) return;
@@ -2598,13 +2738,15 @@ async function bindEvents() {
     }
   });
 
+  get('activeFilterPills')?.addEventListener('click', (event) => {
+    const pill = event.target.closest('[data-filter-field]');
+    if (!pill) return;
+    clearFieldFilter(pill.dataset.filterField);
+  });
+
   get('saveWeightPresetBtn').addEventListener('click', saveWeightPreset);
   get('loadWeightPresetBtn').addEventListener('click', loadWeightPreset);
   get('deleteWeightPresetBtn').addEventListener('click', deleteWeightPreset);
-
-  get('bulkRunBtn').addEventListener('click', () =>
-    runBulkOperation().catch((error) => setMessage(error.message, true))
-  );
 
 }
 
@@ -2636,7 +2778,7 @@ async function init() {
   bindHeaderFilterPopupEvents();
   let savedWeights = analysis.DEFAULT_WEIGHTS;
   try {
-    const resp = await fetch('config/mix-weights.json');
+    const resp = await fetch(new URL('../../config/mix-weights.json', window.location.href));
     if (resp.ok) savedWeights = await resp.json();
   } catch { /* use defaults */ }
   renderMixWeightSliders(savedWeights);

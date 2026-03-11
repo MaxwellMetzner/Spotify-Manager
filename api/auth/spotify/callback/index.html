@@ -6,11 +6,11 @@
     <title>Spotify Manager Callback</title>
   </head>
   <body>
-    <noscript><p>JavaScript is required. <a href="/">Return to Spotify Manager</a>.</p></noscript>
+    <noscript><p>JavaScript is required. <a href="/src/renderer/">Return to Spotify Manager</a>.</p></noscript>
     <script>
       const query = window.location.search || '';
       const hash = window.location.hash || '';
-      window.location.replace(`/${query}${hash}`);
+      window.location.replace(`/src/renderer/${query}${hash}`);
     </script>
   </body>
 </html>

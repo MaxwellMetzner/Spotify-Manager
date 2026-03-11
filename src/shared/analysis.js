@@ -156,7 +156,16 @@
       nearMap.get(baseKey).push({ index, track, keepScore: rankDuplicateCandidate(track) });
     });
 
-    const exactGroups = Array.from(exactMap.values()).filter((items) => items.length > 1);
+    const exactGroups = Array.from(exactMap.values())
+      .filter((items) => items.length > 1)
+      .map((group) => {
+        const sorted = [...group].sort((a, b) => b.keepScore - a.keepScore);
+        const anchor = sorted[0]?.track;
+        return sorted.map((entry) => ({
+          ...entry,
+          pairScore: anchor ? duplicatePairScore(anchor, entry.track) : 100,
+        }));
+      });
     const nearGroups = Array.from(nearMap.values())
       .filter((items) => items.length > 1)
       .filter((items) => {
@@ -172,9 +181,29 @@
         }));
       });
 
+    const mergeGroups = [
+      ...exactGroups.map((group) => ({
+        kind: 'exact',
+        items: group.map((entry, itemIndex) => ({
+          ...entry,
+          recommendedKeep: itemIndex === 0,
+          removeByDefault: itemIndex !== 0,
+        })),
+      })),
+      ...nearGroups.map((group) => ({
+        kind: 'near',
+        items: group.map((entry, itemIndex) => ({
+          ...entry,
+          recommendedKeep: itemIndex === 0,
+          removeByDefault: itemIndex !== 0,
+        })),
+      })),
+    ];
+
     return {
       exactGroups,
       nearGroups,
+      mergeGroups,
     };
   }
 

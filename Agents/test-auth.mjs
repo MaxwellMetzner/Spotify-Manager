@@ -413,6 +413,36 @@ test('beginLogin stores PKCE fallback transaction in local storage', async () =>
   }
 });
 
+test('beginLogin builds authorize URL with PKCE S256 parameters', async () => {
+  await installBrowserGlobals();
+  try {
+    const auth = await importAuth();
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: '1234567890abcdef1234567890abcdef',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+    }));
+
+    await auth.beginLogin();
+
+    const url = new URL(window.location.href);
+    assert.equal(url.origin, 'https://accounts.spotify.com');
+    assert.equal(url.pathname, '/authorize');
+    assert.equal(url.searchParams.get('client_id'), '1234567890abcdef1234567890abcdef');
+    assert.equal(url.searchParams.get('response_type'), 'code');
+    assert.equal(url.searchParams.get('redirect_uri'), 'http://127.0.0.1:3000/api/auth/spotify/callback');
+    assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+    assert.ok((url.searchParams.get('scope') || '').includes('playlist-read-private'));
+    assert.ok((url.searchParams.get('state') || '').length >= 20);
+    assert.ok((url.searchParams.get('code_challenge') || '').length >= 43);
+
+    const transaction = JSON.parse(localStorage.getItem('spotifyManager.pkceTransaction'));
+    assert.ok(transaction.codeVerifier.length >= 43);
+    assert.ok(transaction.codeVerifier.length <= 128);
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
 test('handleAuthCallback uses local storage fallback when session storage was cleared', async () => {
   await installBrowserGlobals();
   globalThis.window.location.search = '?code=valid_code&state=correct_state';
@@ -449,6 +479,47 @@ test('handleAuthCallback uses local storage fallback when session storage was cl
   }
 });
 
+test('handleAuthCallback exchanges code with client id, redirect uri, and code verifier', async () => {
+  await installBrowserGlobals();
+  globalThis.window.location.search = '?code=valid_code&state=correct_state';
+  globalThis.window.location.href = 'http://127.0.0.1:3000/src/renderer/?code=valid_code&state=correct_state';
+  try {
+    const auth = await importAuth();
+
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: '1234567890abcdef1234567890abcdef',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+    }));
+    sessionStorage.setItem('spotify_pkce_state', 'correct_state');
+    sessionStorage.setItem('spotify_pkce_verifier', 'verifier_abc');
+
+    let tokenBody = null;
+    globalThis.fetch = async (_url, opts) => {
+      tokenBody = opts.body;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'new_access',
+          refresh_token: 'new_refresh',
+          expires_in: 3600,
+        }),
+      };
+    };
+
+    await auth.handleAuthCallback();
+
+    const params = new URLSearchParams(tokenBody);
+    assert.equal(params.get('grant_type'), 'authorization_code');
+    assert.equal(params.get('client_id'), '1234567890abcdef1234567890abcdef');
+    assert.equal(params.get('code'), 'valid_code');
+    assert.equal(params.get('redirect_uri'), 'http://127.0.0.1:3000/api/auth/spotify/callback');
+    assert.equal(params.get('code_verifier'), 'verifier_abc');
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
 test('ensureCanonicalLoopbackOrigin redirects localhost to 127.0.0.1', async () => {
   await installBrowserGlobals({
     window: {
@@ -464,6 +535,45 @@ test('ensureCanonicalLoopbackOrigin redirects localhost to 127.0.0.1', async () 
 
     assert.equal(result.redirected, true);
     assert.equal(window.location.href, 'http://127.0.0.1:3000/?debug=1#table');
+  } finally {
+    cleanupBrowserGlobals();
+  }
+});
+
+test('tryAutoRefresh sends refresh_token grant with client id', async () => {
+  await installBrowserGlobals();
+  try {
+    const auth = await importAuth();
+    localStorage.setItem('spotifyManager.setup', JSON.stringify({
+      clientId: '1234567890abcdef1234567890abcdef',
+      redirectUri: 'http://127.0.0.1:3000/api/auth/spotify/callback',
+    }));
+    localStorage.setItem('spotifyManager.tokens', JSON.stringify({
+      accessToken: 'expired_token',
+      refreshToken: 'refresh_123',
+      expiresAt: Date.now() - 1000,
+    }));
+
+    let refreshBody = null;
+    globalThis.fetch = async (_url, opts) => {
+      refreshBody = opts.body;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'fresh_access',
+          expires_in: 3600,
+        }),
+      };
+    };
+
+    const refreshed = await auth.tryAutoRefresh();
+    assert.equal(refreshed, true);
+
+    const params = new URLSearchParams(refreshBody);
+    assert.equal(params.get('grant_type'), 'refresh_token');
+    assert.equal(params.get('client_id'), '1234567890abcdef1234567890abcdef');
+    assert.equal(params.get('refresh_token'), 'refresh_123');
   } finally {
     cleanupBrowserGlobals();
   }

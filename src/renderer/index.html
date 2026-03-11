@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../../node_modules/tabulator-tables/dist/css/tabulator_midnight.min.css" />
+    <link rel="stylesheet" href="../../node_modules/tabulator-tables/dist/css/tabulator.min.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -23,12 +23,16 @@
         </div>
 
         <div class="auth-block">
-          <button id="loginBtn" class="btn btn-primary">Sign In With Spotify</button>
-          <button id="logoutBtn" class="btn btn-ghost">Sign Out</button>
-          <button id="openSetupWizardBtn" class="btn btn-small">Setup / Repair Spotify Config</button>
-          <div id="setupStatus" class="status"></div>
-          <div id="authStatus" class="status">Disconnected</div>
-          <div id="userLabel" class="subtle"></div>
+          <div class="auth-actions">
+            <button id="loginBtn" class="btn btn-primary" disabled>Sign In With Spotify</button>
+            <button id="logoutBtn" class="btn btn-ghost" disabled>Sign Out</button>
+            <button id="openSetupWizardBtn" class="btn btn-small">Setup Spotify Config</button>
+          </div>
+          <div class="auth-summary">
+            <div id="setupStatus" class="status"></div>
+            <div id="authStatus" class="status">Disconnected</div>
+          </div>
+          <div id="userLabel" class="subtle auth-user-label"></div>
         </div>
 
         <div class="playlist-block">
@@ -62,10 +66,15 @@
           <div class="inline-controls table-tools">
             <button id="openColumnsBtn" class="btn btn-small">Columns</button>
             <button id="removeSelectedBtn" class="btn btn-small">Remove Selected</button>
-            <button id="toggleDebugBtn" class="btn btn-small">Debug: Off</button>
-            <button id="toggleDebugPanelBtn" class="btn btn-small">Show Debug Log</button>
-            <button id="copyDebugLogBtn" class="btn btn-small hidden">Copy Debug Log</button>
-            <button id="clearDebugLogBtn" class="btn btn-small hidden">Clear Debug Log</button>
+            <button id="resetOrderBtn" class="btn btn-small">Reset To Original Order</button>
+            <button id="shuffleBtn" class="btn btn-small">Shuffle</button>
+            <span id="filterCount" class="status toolbar-status">Filtered tracks: 0</span>
+            <div class="inline-controls debug-tools">
+              <button id="toggleDebugBtn" class="btn btn-small">Debug Off</button>
+              <button id="toggleDebugPanelBtn" class="btn btn-small">Debug Log</button>
+              <button id="copyDebugLogBtn" class="btn btn-small hidden">Copy</button>
+              <button id="clearDebugLogBtn" class="btn btn-small hidden">Clear</button>
+            </div>
           </div>
           <div id="activeFilterPills" class="filter-pills"></div>
 
@@ -116,30 +125,9 @@
           <div class="ribbon-panels">
             <div class="ribbon-panel active" data-panel="home">
               <div class="ribbon-group wide">
-                <h4>Playlist</h4>
-                <div class="inline-controls">
-                  <button id="resetOrderBtn" class="btn btn-small">Reset To Original Order</button>
-                  <button id="shuffleBtn" class="btn btn-small">Shuffle</button>
-                  <span id="filterCount" class="status">Filtered tracks: 0</span>
-                </div>
-                <p class="subtle">Use the table headers for sorting and filtering. The current visible order is exported exactly as shown.</p>
-              </div>
-
-              <div class="ribbon-group wide">
-                <h4>Bulk Playlist Operations</h4>
-                <p class="subtle">Runs against each selected source playlist and creates a new playlist copy for each result.</p>
-                <p class="subtle"><strong>Mix Assist Copy</strong>: applies current Mix settings and track ordering logic before export.</p>
-                <p class="subtle"><strong>Filtered Copy</strong>: applies your active table filters and exports only matching rows.</p>
-                <div class="inline-controls">
-                  <label for="bulkOperationSelect">Operation</label>
-                  <select id="bulkOperationSelect">
-                    <option value="mix">Mix Assist Copy</option>
-                    <option value="filter">Filtered Copy</option>
-                  </select>
-                  <button id="bulkRunBtn" class="btn btn-small">Run Bulk</button>
-                </div>
-                <select id="bulkPlaylistSelect" class="bulk-select" multiple></select>
-                <div id="bulkResults" class="results compact-results"></div>
+                <h4>Workflow</h4>
+                <p class="subtle">Use the table headers to sort or filter by the currently visible column. Export always uses the current visible order, so the playlist preview on screen is the playlist you create.</p>
+                <p class="subtle">Mix and Analyze panels now stay focused on ordering, transition review, outlier checks, and duplicate cleanup without bulk copy actions.</p>
               </div>
             </div>
 
@@ -182,8 +170,7 @@
                 <h4>Deduplication</h4>
                 <div class="inline-controls">
                   <button id="analyzeDuplicatesBtn" class="btn btn-small">Analyze</button>
-                  <button id="applyExactDedupeBtn" class="btn btn-small">Exact Dedupe</button>
-                  <button id="resolveNearDuplicatesBtn" class="btn btn-small">Near Duplicates</button>
+                  <button id="applyDedupeSelectionsBtn" class="btn btn-small">Remove Checked</button>
                 </div>
                 <div id="dedupeResults" class="results compact-results"></div>
               </div>
@@ -200,23 +187,6 @@
         </section>
 
       </main>
-    </div>
-
-    <div id="nearDuplicateModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="nearDupTitle">
-      <div class="modal">
-        <div class="row-between">
-          <h3 id="nearDupTitle">Resolve Near Duplicates</h3>
-          <button id="closeNearDuplicateModalBtn" class="btn btn-small">Close</button>
-        </div>
-        <p class="subtle">Keep one or more versions. Use recommendation mode to keep best-ranked candidates only.</p>
-        <div class="inline-controls">
-          <button id="keepRecommendedOnlyBtn" class="btn btn-small">Keep Recommended Only</button>
-        </div>
-        <div id="nearDuplicateGroups" class="modal-scroll"></div>
-        <div class="inline-controls">
-          <button id="applyNearDuplicateChoicesBtn" class="btn btn-primary">Apply Choices</button>
-        </div>
-      </div>
     </div>
 
     <div id="setupModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
@@ -290,6 +260,14 @@
       </div>
     </div>
 
+    <div id="busyOverlay" class="loading-overlay hidden" role="status" aria-live="polite" aria-atomic="true">
+      <div class="loading-card">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <strong id="busyOverlayTitle">Working...</strong>
+        <div id="busyOverlayStatus" class="subtle">Please wait.</div>
+      </div>
+    </div>
+
     <div id="columnPickerModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="columnPickerTitle">
       <div class="modal">
         <div class="row-between">
@@ -322,6 +300,6 @@
 
     <script src="../../node_modules/tabulator-tables/dist/js/tabulator.min.js"></script>
     <script src="../shared/analysis.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>

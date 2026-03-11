@@ -37,6 +37,9 @@ test('findDuplicates identifies exact and near duplicate groups', () => {
   const report = analysis.findDuplicates(tracks);
   assert.equal(report.exactGroups.length, 1);
   assert.equal(report.nearGroups.length, 1);
+  assert.equal(report.mergeGroups.length, 2);
+  assert.equal(report.mergeGroups[0].items[0].recommendedKeep, true);
+  assert.equal(report.mergeGroups[0].items[1].removeByDefault, true);
 
   const deduped = analysis.dedupeKeepHighestPopularity(tracks, report);
   assert.equal(deduped.length, 2);
