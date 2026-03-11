@@ -6,72 +6,84 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const DEFAULT_WEIGHTS = {
-    bpm: 0.24,
-    camelot: 0.24,
-    energy: 0.12,
-    danceability: 0.1,
-    valence: 0.07,
-    loudness: 0.06,
-    instrumentalness: 0.05,
-    acousticness: 0.04,
-    speechiness: 0.03,
-    liveness: 0.02,
-    genre: 0.03,
+    bpm: 0.26,
+    harmonic: 0.22,
+    energy: 0.14,
+    danceability: 0.07,
+    valence: 0.04,
+    loudness: 0.08,
+    instrumentalness: 0.02,
+    acousticness: 0.02,
+    speechiness: 0.02,
+    liveness: 0.01,
+    genre: 0.1,
   };
 
   const MIX_MODES = {
-    balanced: {
-      bpm: 0.24,
-      camelot: 0.24,
-      energy: 0.12,
-      danceability: 0.1,
-      valence: 0.07,
-      loudness: 0.06,
-      instrumentalness: 0.05,
-      acousticness: 0.04,
-      speechiness: 0.03,
-      liveness: 0.02,
-      genre: 0.03,
-    },
-    'club-flow': {
-      bpm: 0.32,
-      camelot: 0.28,
+    'smooth-harmonic': {
+      bpm: 0.28,
+      harmonic: 0.24,
       energy: 0.14,
-      danceability: 0.12,
-      loudness: 0.09,
-      valence: 0.02,
-      instrumentalness: 0.01,
-      acousticness: 0.0,
-      speechiness: 0.0,
-      liveness: 0.0,
-      genre: 0.02,
-    },
-    'energy-ramp': {
-      bpm: 0.2,
-      camelot: 0.14,
-      energy: 0.34,
-      danceability: 0.14,
-      valence: 0.08,
+      genre: 0.1,
       loudness: 0.08,
-      instrumentalness: 0.0,
-      acousticness: 0.0,
-      speechiness: 0.0,
-      liveness: 0.0,
-      genre: 0.02,
+      danceability: 0.07,
+      valence: 0.04,
+      instrumentalness: 0.02,
+      acousticness: 0.01,
+      speechiness: 0.01,
+      liveness: 0.01,
     },
-    'chill-arc': {
-      bpm: 0.12,
-      camelot: 0.26,
-      energy: 0.08,
-      danceability: 0.06,
-      valence: 0.14,
-      loudness: 0.04,
-      instrumentalness: 0.12,
-      acousticness: 0.13,
+    'club-beat-driven': {
+      bpm: 0.24,
+      harmonic: 0.18,
+      energy: 0.16,
+      genre: 0.12,
+      loudness: 0.08,
+      danceability: 0.08,
+      valence: 0.05,
+      instrumentalness: 0.03,
+      acousticness: 0.02,
+      speechiness: 0.02,
+      liveness: 0.02,
+    },
+    'quick-transition': {
+      bpm: 0.3,
+      harmonic: 0.15,
+      energy: 0.18,
+      genre: 0.08,
+      loudness: 0.1,
+      danceability: 0.08,
+      valence: 0.04,
+      instrumentalness: 0.02,
+      acousticness: 0.02,
       speechiness: 0.02,
       liveness: 0.01,
-      genre: 0.02,
     },
+    generic: {
+      bpm: 0.26,
+      harmonic: 0.22,
+      energy: 0.14,
+      genre: 0.1,
+      loudness: 0.08,
+      danceability: 0.07,
+      valence: 0.04,
+      speechiness: 0.02,
+      instrumentalness: 0.02,
+      acousticness: 0.02,
+      liveness: 0.01,
+    },
+  };
+
+  const ARTIST_SPACING_PROFILES = {
+    'smooth-harmonic': { lookback: 5, noOverlapBonus: 0.03, oneOverlapPenalty: -0.15, multiOverlapPenalty: -0.2 },
+    'club-beat-driven': { lookback: 5, noOverlapBonus: 0.05, oneOverlapPenalty: -0.22, multiOverlapPenalty: -0.28 },
+    'quick-transition': { lookback: 4, noOverlapBonus: 0.02, oneOverlapPenalty: -0.1, multiOverlapPenalty: -0.18 },
+    generic: { lookback: 5, noOverlapBonus: 0.08, oneOverlapPenalty: -0.08, multiOverlapPenalty: -0.18 },
+  };
+
+  const DEFAULT_ARTIST_AVOIDANCE = {
+    enabled: true,
+    strength: 1,
   };
 
   function clamp01(value) {
@@ -135,9 +147,7 @@
   function rankDuplicateCandidate(track) {
     const popularity = Number(track.popularity || 0) / 100;
     const hasIsrc = track.isrc ? 1 : 0;
-    const releaseYear = Number(track.albumReleaseYear || 0);
-    const recency = releaseYear ? clamp01((releaseYear - 1970) / 80) : 0.2;
-    return Number((popularity * 0.65 + hasIsrc * 0.2 + recency * 0.15).toFixed(4));
+    return Number((popularity * 0.8 + hasIsrc * 0.2).toFixed(4));
   }
 
   function findDuplicates(tracks) {
@@ -232,104 +242,145 @@
     return working;
   }
 
-  function parseCamelot(camelot) {
-    if (!camelot || typeof camelot !== 'string') return null;
-    const clean = camelot.trim().toUpperCase();
-    const num = Number(clean.slice(0, -1));
-    const letter = clean.slice(-1);
-    if (!Number.isFinite(num) || num < 1 || num > 12 || !['A', 'B'].includes(letter)) return null;
-    return { number: num, mode: letter };
+  function toFiniteNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
-  function camelotDistance(a, b) {
-    const first = parseCamelot(a);
-    const second = parseCamelot(b);
-    if (!first || !second) return 0.5;
-    const step = Math.min(
-      (first.number - second.number + 12) % 12,
-      (second.number - first.number + 12) % 12
-    );
-    const wheelPenalty = step / 6;
-    const modePenalty = first.mode === second.mode ? 0 : step <= 1 ? 0.08 : 0.2;
-    return Math.min(1, wheelPenalty + modePenalty);
+  function featureMatch(first, second, maxDiff = 1) {
+    const left = toFiniteNumber(first);
+    const right = toFiniteNumber(second);
+    if (left === null || right === null) return 0.5;
+    if (!Number.isFinite(maxDiff) || maxDiff <= 0) return 0.5;
+    return clamp01(1 - Math.abs(left - right) / maxDiff);
   }
 
-  function normalizeFeature(tracks, field) {
-    const values = tracks
-      .map((track) => track[field])
-      .filter((value) => typeof value === 'number' && Number.isFinite(value));
-    if (!values.length) return { min: 0, max: 1 };
-    return { min: Math.min(...values), max: Math.max(...values) };
+  function bpmMatch(a, b, maxDiff = 8) {
+    return featureMatch(a?.bpm ?? a?.tempo, b?.bpm ?? b?.tempo, maxDiff);
   }
 
-  function distanceForField(a, b, stats, field) {
-    const first = a[field];
-    const second = b[field];
-    if (typeof first !== 'number' || typeof second !== 'number') return 0.5;
-    const { min, max } = stats[field];
-    if (max === min) return 0;
-    return Math.abs((first - min) / (max - min) - (second - min) / (max - min));
+  function loudnessMatch(a, b, maxDiff = 6) {
+    return featureMatch(a?.loudness, b?.loudness, maxDiff);
   }
 
-  function genreDistance(a, b) {
-    const aSet = new Set((a.genres || []).map((g) => g.toLowerCase()));
-    const bSet = new Set((b.genres || []).map((g) => g.toLowerCase()));
-    if (!aSet.size && !bSet.size) return 0.5;
-    if (!aSet.size || !bSet.size) return 0.7;
+  function getGenreSet(track) {
+    if (Array.isArray(track?.genres) && track.genres.length) {
+      return new Set(track.genres.map((genre) => String(genre || '').trim().toLowerCase()).filter(Boolean));
+    }
+    const genreText = String(track?.genreDisplay || '').trim();
+    if (!genreText) return new Set();
+    return new Set(genreText.split(',').map((genre) => genre.trim().toLowerCase()).filter(Boolean));
+  }
+
+  function genreMatch(a, b) {
+    const aSet = getGenreSet(a);
+    const bSet = getGenreSet(b);
+    if (!aSet.size || !bSet.size) return 0.5;
     const intersection = [...aSet].filter((genre) => bSet.has(genre)).length;
     const union = new Set([...aSet, ...bSet]).size;
-    return 1 - intersection / union;
+    return union ? intersection / union : 0.5;
   }
 
-  function transitionCost(a, b, stats, weights) {
-    return (
-      (weights.bpm || 0) * distanceForField(a, b, stats, 'bpm') +
-      (weights.camelot || 0) * camelotDistance(a.camelot, b.camelot) +
-      (weights.energy || 0) * distanceForField(a, b, stats, 'energy') +
-      (weights.danceability || 0) * distanceForField(a, b, stats, 'danceability') +
-      (weights.valence || 0) * distanceForField(a, b, stats, 'valence') +
-      (weights.loudness || 0) * distanceForField(a, b, stats, 'loudness') +
-      (weights.instrumentalness || 0) * distanceForField(a, b, stats, 'instrumentalness') +
-      (weights.acousticness || 0) * distanceForField(a, b, stats, 'acousticness') +
-      (weights.speechiness || 0) * distanceForField(a, b, stats, 'speechiness') +
-      (weights.liveness || 0) * distanceForField(a, b, stats, 'liveness') +
-      (weights.genre || 0) * genreDistance(a, b)
+  function harmonicMatch(a, b) {
+    const key1 = toFiniteNumber(a?.key);
+    const mode1 = toFiniteNumber(a?.mode);
+    const key2 = toFiniteNumber(b?.key);
+    const mode2 = toFiniteNumber(b?.mode);
+    if (key1 === null || mode1 === null || key2 === null || mode2 === null) return 0.5;
+    if (key1 === key2 && mode1 === mode2) return 1;
+    const step = (key1 - key2 + 12) % 12;
+    if ((step === 1 || step === 11) && mode1 === mode2) return 0.85;
+    if (key1 === key2 && mode1 !== mode2) return 0.8;
+    if ((step === 1 || step === 11) && mode1 !== mode2) return 0.65;
+    return 0.2;
+  }
+
+  function getArtistSet(track) {
+    const artistText = track?.artistDisplay || track?.primaryArtist || '';
+    return new Set(
+      String(artistText)
+        .split(',')
+        .map((artist) => artist.trim().toLowerCase())
+        .filter(Boolean)
     );
   }
 
-  function computeTrackStats(tracks) {
+  function getRecentArtists(tracks, lookback) {
+    return tracks.slice(-lookback).flatMap((track) => [...getArtistSet(track)]);
+  }
+
+  function artistSpacingBonus(candidate, recentTracks, profile) {
+    const candidateArtists = getArtistSet(candidate);
+    if (!candidateArtists.size) return 0;
+    const recentArtists = getRecentArtists(recentTracks, profile.lookback);
+    const overlapCount = recentArtists.reduce(
+      (sum, artist) => sum + (candidateArtists.has(artist) ? 1 : 0),
+      0
+    );
+    if (overlapCount === 0) return profile.noOverlapBonus;
+    if (overlapCount === 1) return profile.oneOverlapPenalty;
+    return profile.multiOverlapPenalty;
+  }
+
+  function getArtistSpacingProfile(mode, override) {
+    const base = ARTIST_SPACING_PROFILES[mode] || ARTIST_SPACING_PROFILES.generic;
+    const normalized = {
+      ...DEFAULT_ARTIST_AVOIDANCE,
+      ...(override || {}),
+    };
+    if (!normalized.enabled) {
+      return {
+        ...base,
+        noOverlapBonus: 0,
+        oneOverlapPenalty: 0,
+        multiOverlapPenalty: 0,
+      };
+    }
+    const strength = clamp01(Number(normalized.strength ?? 1));
     return {
-      bpm: normalizeFeature(tracks, 'bpm'),
-      energy: normalizeFeature(tracks, 'energy'),
-      danceability: normalizeFeature(tracks, 'danceability'),
-      valence: normalizeFeature(tracks, 'valence'),
-      loudness: normalizeFeature(tracks, 'loudness'),
-      instrumentalness: normalizeFeature(tracks, 'instrumentalness'),
-      acousticness: normalizeFeature(tracks, 'acousticness'),
-      speechiness: normalizeFeature(tracks, 'speechiness'),
-      liveness: normalizeFeature(tracks, 'liveness'),
+      ...base,
+      noOverlapBonus: base.noOverlapBonus * strength,
+      oneOverlapPenalty: base.oneOverlapPenalty * strength,
+      multiOverlapPenalty: base.multiOverlapPenalty * strength,
     };
   }
 
+  function pairwiseTransitionScore(a, b, weights) {
+    return (
+      (weights.bpm || 0) * bpmMatch(a, b) +
+      (weights.harmonic || 0) * harmonicMatch(a, b) +
+      (weights.energy || 0) * featureMatch(a?.energy, b?.energy) +
+      (weights.genre || 0) * genreMatch(a, b) +
+      (weights.loudness || 0) * loudnessMatch(a, b) +
+      (weights.danceability || 0) * featureMatch(a?.danceability, b?.danceability) +
+      (weights.valence || 0) * featureMatch(a?.valence, b?.valence) +
+      (weights.instrumentalness || 0) * featureMatch(a?.instrumentalness, b?.instrumentalness) +
+      (weights.acousticness || 0) * featureMatch(a?.acousticness, b?.acousticness) +
+      (weights.speechiness || 0) * featureMatch(a?.speechiness, b?.speechiness) +
+      (weights.liveness || 0) * featureMatch(a?.liveness, b?.liveness)
+    );
+  }
+
   function getModeWeights(mode, userWeights) {
-    const preset = MIX_MODES[mode] || MIX_MODES.balanced;
-    return { ...DEFAULT_WEIGHTS, ...preset, ...(userWeights || {}) };
+    const migratedWeights = { ...(userWeights || {}) };
+    if (migratedWeights.harmonic === undefined && migratedWeights.camelot !== undefined) {
+      migratedWeights.harmonic = migratedWeights.camelot;
+    }
+    const preset = MIX_MODES[mode] || MIX_MODES.generic;
+    return { ...DEFAULT_WEIGHTS, ...preset, ...migratedWeights };
   }
 
   function optimizeMixOrder(tracks, options) {
     if (!tracks.length) return [];
     const normalizedOptions =
-      options && (options.mode || options.weights) ? options : { mode: 'balanced', weights: options || {} };
-    const mode = normalizedOptions.mode || 'balanced';
+      options && (options.mode || options.weights || options.artistAvoidance)
+        ? options
+        : { mode: 'generic', weights: options || {} };
+    const mode = normalizedOptions.mode || 'generic';
     const weights = getModeWeights(mode, normalizedOptions.weights || {});
-    const stats = computeTrackStats(tracks);
+    const artistSpacing = getArtistSpacingProfile(mode, normalizedOptions.artistAvoidance);
 
     const available = new Set(tracks.map((_, index) => index));
-    const startIndex = tracks.reduce((best, track, index) => {
-      const bestScore = (tracks[best].energy || 0) + (tracks[best].popularity || 0) / 100;
-      const score = (track.energy || 0) + (track.popularity || 0) / 100;
-      return score > bestScore ? index : best;
-    }, 0);
+    const startIndex = 0;
 
     const order = [startIndex];
     available.delete(startIndex);
@@ -337,13 +388,16 @@
     while (available.size) {
       const currentTrack = tracks[order[order.length - 1]];
       let bestIndex = null;
-      let bestDistance = Infinity;
+      let bestScore = -Infinity;
+      const recentTracks = order.slice(-artistSpacing.lookback).map((index) => tracks[index]);
 
       for (const candidate of available) {
         const candidateTrack = tracks[candidate];
-        const cost = transitionCost(currentTrack, candidateTrack, stats, weights);
-        if (cost < bestDistance) {
-          bestDistance = cost;
+        const score =
+          pairwiseTransitionScore(currentTrack, candidateTrack, weights) +
+          artistSpacingBonus(candidateTrack, recentTracks, artistSpacing);
+        if (score > bestScore) {
+          bestScore = score;
           bestIndex = candidate;
         }
       }
@@ -353,9 +407,6 @@
     }
 
     let result = order.map((index) => tracks[index]);
-    if (mode === 'energy-ramp') {
-      result = [...result].sort((a, b) => (a.energy || 0) - (b.energy || 0));
-    }
     return result;
   }
 
@@ -375,7 +426,7 @@
     const clusters = buildGenreClusters(tracks).sort((a, b) => b.items.length - a.items.length);
     const result = [];
     clusters.forEach((cluster) => {
-      const ordered = optimizeMixOrder(cluster.items, options || { mode: 'balanced', weights: {} });
+      const ordered = optimizeMixOrder(cluster.items, options || { mode: 'generic', weights: {} });
       result.push(...ordered);
     });
     return result;
@@ -384,13 +435,21 @@
   function computeTransitionDiagnostics(tracks, options) {
     if (!tracks || tracks.length < 2) return [];
     const normalizedOptions =
-      options && (options.mode || options.weights) ? options : { mode: 'balanced', weights: options || {} };
-    const weights = getModeWeights(normalizedOptions.mode || 'balanced', normalizedOptions.weights || {});
-    const stats = computeTrackStats(tracks);
+      options && (options.mode || options.weights || options.artistAvoidance)
+        ? options
+        : { mode: 'generic', weights: options || {} };
+    const weights = getModeWeights(normalizedOptions.mode || 'generic', normalizedOptions.weights || {});
+    const artistSpacing = getArtistSpacingProfile(
+      normalizedOptions.mode || 'generic',
+      normalizedOptions.artistAvoidance
+    );
     const diagnostics = [];
     for (let index = 0; index < tracks.length - 1; index += 1) {
       const current = tracks[index];
       const next = tracks[index + 1];
+      const recentTracks = tracks.slice(Math.max(0, index - artistSpacing.lookback + 1), index + 1);
+      const transitionScore = pairwiseTransitionScore(current, next, weights);
+      const spacingBonus = artistSpacingBonus(next, recentTracks, artistSpacing);
       diagnostics.push({
         index,
         fromTitle: current.title,
@@ -399,8 +458,11 @@
           typeof current.bpm === 'number' && typeof next.bpm === 'number'
             ? Number((next.bpm - current.bpm).toFixed(2))
             : null,
-        camelotDistance: Number(camelotDistance(current.camelot, next.camelot).toFixed(3)),
-        score: Number(transitionCost(current, next, stats, weights).toFixed(3)),
+        harmonicScore: Number(harmonicMatch(current, next).toFixed(3)),
+        genreScore: Number(genreMatch(current, next).toFixed(3)),
+        artistSpacingBonus: Number(spacingBonus.toFixed(3)),
+        transitionScore: Number(transitionScore.toFixed(3)),
+        score: Number((transitionScore + spacingBonus).toFixed(3)),
       });
     }
     return diagnostics;
@@ -435,10 +497,6 @@
         .filter((value) => typeof value === 'number' && Number.isFinite(value));
     });
 
-    const years = tracks
-      .map((track) => track.albumReleaseYear)
-      .filter((year) => Number.isFinite(year));
-
     const genreCounts = new Map();
     tracks.forEach((track) => {
       (track.genres || []).forEach((genre) => {
@@ -448,7 +506,7 @@
     });
 
     return tracks
-      .map((track) => {
+      .map((track, index) => {
         const numericOutlier = numericFields.reduce((sum, field) => {
           return sum + Math.min(3, zScore(fieldValues[field], track[field]));
         }, 0);
@@ -459,31 +517,21 @@
           if (count > 0) genreRarity += 1 / count;
         });
 
-        const eraOutlier = Number.isFinite(track.albumReleaseYear)
-          ? Math.min(3, zScore(years, track.albumReleaseYear))
-          : 0;
-
-        const score = numericOutlier * 0.55 + genreRarity * 0.25 + eraOutlier * 0.2;
+        const score = numericOutlier * 0.7 + genreRarity * 0.3;
         const weighted = {
-          audio: numericOutlier * 0.55,
-          genre: genreRarity * 0.25,
-          era: eraOutlier * 0.2,
+          audio: numericOutlier * 0.7,
+          genre: genreRarity * 0.3,
         };
         let dominant = 'audio';
         if (weighted.genre > weighted[dominant]) dominant = 'genre';
-        if (weighted.era > weighted[dominant]) dominant = 'era';
 
         let strongestReason =
           'Energy, BPM, loudness, and mood traits are farther from the playlist average than most tracks.';
         if (dominant === 'genre') {
           strongestReason = 'Genre tags are rare compared with the rest of the playlist.';
         }
-        if (dominant === 'era') {
-          strongestReason = 'Release year is outside the playlist core era.';
-        }
 
         const reasons = [];
-        if (eraOutlier > 1.5) reasons.push('Release year differs strongly from playlist core era.');
         if (genreRarity > 0.75) reasons.push('Genre profile is uncommon in this playlist.');
         if (numericOutlier > numericFields.length * 0.25)
           reasons.push('Audio profile (energy/tempo/mood) is far from playlist average.');
@@ -493,6 +541,7 @@
         }
 
         return {
+          index,
           track,
           outlierScore: Number(score.toFixed(3)),
           reasons,
@@ -540,16 +589,6 @@
           } else {
             if (filter.min !== '' && value < Number(filter.min)) passed = false;
             if (filter.max !== '' && value > Number(filter.max)) passed = false;
-          }
-        }
-        if (filter.kind === 'yearRange') {
-          const year = track.albumReleaseYear;
-          passed = true;
-          if (!Number.isFinite(year)) {
-            passed = false;
-          } else {
-            if (filter.min !== '' && year < Number(filter.min)) passed = false;
-            if (filter.max !== '' && year > Number(filter.max)) passed = false;
           }
         }
         if (filter.kind === 'contains') {

@@ -403,6 +403,38 @@ body {
   min-width: 0;
 }
 
+.mix-slider-heading-row,
+.mix-slider-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mix-slider-meta-row {
+  flex-wrap: wrap;
+}
+
+.mix-toggle-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.mix-toggle-inline input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.mix-slider-item-artist.is-disabled {
+  opacity: 0.58;
+}
+
 input,
 select,
 textarea,
@@ -521,10 +553,21 @@ button:focus {
   max-height: 340px;
 }
 
+.transition-group {
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+}
+
 .transition-group #transitionResults,
 #outliersResult,
 #dedupeResults {
   max-height: 54vh;
+}
+
+.transition-group #transitionResults {
+  flex: 1;
+  max-height: none;
 }
 
 .results-summary {
@@ -576,6 +619,12 @@ button:focus {
   margin-top: 8px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.diagnostic-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .dedupe-group-card {
@@ -644,8 +693,7 @@ button:focus {
 
 .table-wrap {
   overflow-x: auto;
-  overflow-y: auto;
-  max-height: 54vh;
+  overflow-y: hidden;
   border: 1px solid rgba(26, 115, 232, 0.16);
   border-radius: 18px;
   width: 100%;
@@ -666,7 +714,14 @@ button:focus {
 }
 
 .tabulator .tabulator-tableholder {
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.tabulator .tabulator-col-resize-handle {
+  width: 10px;
+  right: -5px;
+  z-index: 4;
 }
 
 .table-tools {

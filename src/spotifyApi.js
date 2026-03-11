@@ -184,20 +184,6 @@ async function waitForPlaylistMutationReady(playlistId) {
   return false;
 }
 
-function toCamelot(key, mode) {
-  if (key === null || key === undefined || key < 0) return null;
-  const major = ['8B', '3B', '10B', '5B', '12B', '7B', '2B', '9B', '4B', '11B', '6B', '1B'];
-  const minor = ['5A', '12A', '7A', '2A', '9A', '4A', '11A', '6A', '1A', '8A', '3A', '10A'];
-  const map = mode === 1 ? major : minor;
-  return map[key] || null;
-}
-
-function parseYearFromDate(rawDate) {
-  if (!rawDate) return null;
-  const match = /^\d{4}/.exec(rawDate);
-  return match ? Number(match[0]) : null;
-}
-
 // --------------- Playlists ---------------
 
 export async function fetchCurrentUserPlaylists() {
@@ -385,62 +371,6 @@ async function fetchAudioFeaturesByIds(trackIds, progressCb) {
   return result;
 }
 
-// --------------- Artist Genres ---------------
-
-async function fetchArtistsByIds(artistIds, progressCb) {
-  const startedAt = nowMs();
-  dlog('fetchArtistsByIds:start', { count: artistIds.length });
-  const result = new Map();
-
-  if (!isEndpointAvailable('artistMetadata')) {
-    progressCb?.({
-      stage: 'artist-genres',
-      message: 'Skipping artist metadata because Spotify previously returned 403 for this endpoint.',
-      blockedArtists: artistIds.length,
-    });
-    return result;
-  }
-
-  const groups = chunk(artistIds, 50);
-  for (let index = 0; index < groups.length; index += 1) {
-    try {
-      const response = await spotifyRequest('GET', '/artists', { ids: groups[index].join(',') });
-      for (const artist of response.artists || []) {
-        if (artist && artist.id) result.set(artist.id, artist);
-      }
-    } catch (error) {
-      if (!isSpotifyStatus(error, 403)) {
-        throw error;
-      }
-      markEndpointUnavailable('artistMetadata', String(error?.message || error));
-      progressCb?.({
-        stage: 'artist-genres',
-        message: 'Spotify blocked artist metadata lookup. Continuing without genre metadata.',
-        blockedArtists: artistIds.length,
-      });
-      dlog('fetchArtistsByIds:forbiddenBatch', {
-        blocked: groups[index].length,
-        processedBatches: index,
-      });
-      break;
-    }
-
-    if (typeof progressCb === 'function') {
-      progressCb({
-        stage: 'artist-genres',
-        message: `Fetched artist metadata batch ${index + 1}/${groups.length}`,
-        completedBatches: index + 1,
-        totalBatches: groups.length,
-      });
-    }
-  }
-  dlog('fetchArtistsByIds:done', {
-    resolved: result.size,
-    durationMs: Math.round(nowMs() - startedAt),
-  });
-  return result;
-}
-
 // --------------- Full Playlist with Metadata ---------------
 
 export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
@@ -467,46 +397,27 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
     .filter(({ item }) => item?.track?.type === 'track' && item.track.id);
 
   const trackIds = tracks.map(({ item }) => item.track.id);
-  const artistIds = Array.from(
-    new Set(
-      tracks.flatMap(({ item }) => item.track.artists || []).map((a) => a.id).filter(Boolean)
-    )
-  );
-
   if (typeof progressCb === 'function') {
     progressCb({
       stage: 'enrichment-start',
-      message: `Enriching ${trackIds.length} tracks with audio and artist metadata...`,
+      message: `Enriching ${trackIds.length} tracks with audio metadata...`,
     });
   }
 
   let audioFeaturesMap = new Map();
-  let artistsMap = new Map();
-
-  const [audioFeaturesResult, artistsResult] = await Promise.allSettled([
+  const [audioFeaturesResult] = await Promise.allSettled([
     fetchAudioFeaturesByIds(trackIds, progressCb),
-    fetchArtistsByIds(artistIds, progressCb),
   ]);
 
   if (audioFeaturesResult.status === 'fulfilled') audioFeaturesMap = audioFeaturesResult.value;
-  if (artistsResult.status === 'fulfilled') artistsMap = artistsResult.value;
 
   const hydratedTracks = tracks.map(({ item, index }) => {
     const track = item.track;
     const features = audioFeaturesMap.get(track.id) || {};
     const album = track.album || {};
     const artistNames = (track.artists || []).map((a) => a.name).filter(Boolean);
-    const artistGenres = Array.from(
-      new Set(
-        (track.artists || [])
-          .flatMap((artist) => artistsMap.get(artist.id)?.genres || [])
-          .map((genre) => genre.toLowerCase())
-      )
-    );
 
     const releaseDate = album.release_date || null;
-    const releaseYear = parseYearFromDate(releaseDate);
-    const camelot = toCamelot(features.key, features.mode);
 
     return {
       customOrder: index,
@@ -525,7 +436,6 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
       albumName: album.name || null,
       albumType: album.album_type || null,
       albumReleaseDate: releaseDate,
-      albumReleaseYear: releaseYear,
       discNumber: track.disc_number || null,
       trackNumber: track.track_number || null,
       durationMs: track.duration_ms || null,
@@ -536,8 +446,6 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
       availableMarketsCount: Array.isArray(track.available_markets) ? track.available_markets.length : null,
       previewUrl: track.preview_url || null,
       linkedFromId: track.linked_from?.id || null,
-      genres: artistGenres,
-      genreDisplay: artistGenres.length ? artistGenres.join(', ') : null,
       acousticness: features.acousticness ?? null,
       danceability: features.danceability ?? null,
       energy: features.energy ?? null,
@@ -554,7 +462,6 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
         features.key === undefined || features.key === null || features.key < 0
           ? null
           : `${features.key}${features.mode === 1 ? ' major' : ' minor'}`,
-      camelot,
       timeSignature: features.time_signature ?? null,
       analysisUrl: features.analysis_url || null,
       analysisAvailable: Boolean(features.analysis_url),
@@ -563,7 +470,6 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
         track: true,
         playlistItem: true,
         audioFeatures: Boolean(audioFeaturesMap.get(track.id)),
-        artistGenres: artistGenres.length > 0,
       },
     };
   });

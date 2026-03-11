@@ -194,7 +194,7 @@ test('fetchCurrentUserPlaylists hydrates zero-count playlists individually', asy
   }
 });
 
-test('fetchPlaylistWithMetadata hydrates tracks with audio features and artist genres', async () => {
+test('fetchPlaylistWithMetadata hydrates tracks with audio features only', async () => {
   installBrowserGlobals();
   try {
     const trackItem = {
@@ -235,9 +235,6 @@ test('fetchPlaylistWithMetadata hydrates tracks with audio features and artist g
           analysis_url: 'https://api.spotify.com/v1/audio-analysis/tr1',
         }],
       },
-      '/artists': {
-        artists: [{ id: 'ar1', name: 'Artist One', genres: ['electronic', 'house'] }],
-      },
     });
 
     const api = await importApi();
@@ -251,22 +248,17 @@ test('fetchPlaylistWithMetadata hydrates tracks with audio features and artist g
     assert.equal(track.artistDisplay, 'Artist One');
     assert.equal(track.bpm, 128);
     assert.equal(track.energy, 0.8);
-    assert.deepEqual(track.genres, ['electronic', 'house']);
-    assert.equal(track.camelot, '6A');
-    assert.equal(track.albumReleaseYear, 2020);
     assert.equal(track.isrc, 'US1234567890');
     assert.equal(track.metadataSource.audioFeatures, true);
-    assert.equal(track.metadataSource.artistGenres, true);
   } finally {
     cleanupBrowserGlobals();
   }
 });
 
-test('fetchPlaylistWithMetadata disables blocked enrichment endpoints after Spotify 403 responses', async () => {
+test('fetchPlaylistWithMetadata disables blocked audio enrichment after Spotify 403 responses', async () => {
   installBrowserGlobals();
   try {
     let audioFeatureCalls = 0;
-    let artistCalls = 0;
     const trackItem = {
       track: {
         id: 'tr1', type: 'track', name: 'Blocked Song', uri: 'spotify:track:tr1',
@@ -310,11 +302,6 @@ test('fetchPlaylistWithMetadata disables blocked enrichment endpoints after Spot
         return { ok: false, status: 403, text: async () => 'Forbidden' };
       }
 
-      if (url.pathname === '/v1/artists') {
-        artistCalls += 1;
-        return { ok: false, status: 403, text: async () => 'Forbidden' };
-      }
-
       return { ok: false, status: 404, text: async () => 'Not found' };
     };
 
@@ -325,11 +312,8 @@ test('fetchPlaylistWithMetadata disables blocked enrichment endpoints after Spot
     assert.equal(first.tracks.length, 1);
     assert.equal(second.tracks.length, 1);
     assert.equal(first.tracks[0].metadataSource.audioFeatures, false);
-    assert.equal(first.tracks[0].metadataSource.artistGenres, false);
     assert.equal(audioFeatureCalls, 1);
-    assert.equal(artistCalls, 1);
     assert.equal(JSON.parse(localStorage.getItem('spotifyManager.endpointAvailability.v1')).audioFeatures, false);
-    assert.equal(JSON.parse(localStorage.getItem('spotifyManager.endpointAvailability.v1')).artistMetadata, false);
   } finally {
     cleanupBrowserGlobals();
   }

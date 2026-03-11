@@ -10,7 +10,8 @@ function makeTrack(overrides = {}) {
     albumName: 'Album',
     popularity: 50,
     bpm: 120,
-    camelot: '8A',
+    key: 9,
+    mode: 0,
     energy: 0.5,
     danceability: 0.5,
     valence: 0.5,
@@ -21,7 +22,6 @@ function makeTrack(overrides = {}) {
     liveness: 0.1,
     genres: ['dance pop'],
     genreDisplay: 'dance pop',
-    albumReleaseYear: 2018,
     uri: 'spotify:track:abc',
     ...overrides,
   };
@@ -64,10 +64,10 @@ test('shufflePasses retains members and length', () => {
 
 test('optimizeMixOrder returns same set of tracks', () => {
   const tracks = [
-    makeTrack({ title: 'A', bpm: 110, camelot: '7A' }),
-    makeTrack({ title: 'B', bpm: 112, camelot: '8A' }),
-    makeTrack({ title: 'C', bpm: 130, camelot: '10B' }),
-    makeTrack({ title: 'D', bpm: 129, camelot: '11B' }),
+    makeTrack({ title: 'A', bpm: 110, key: 2, mode: 0 }),
+    makeTrack({ title: 'B', bpm: 112, key: 3, mode: 0 }),
+    makeTrack({ title: 'C', bpm: 130, key: 9, mode: 1 }),
+    makeTrack({ title: 'D', bpm: 129, key: 10, mode: 1 }),
   ];
 
   const ordered = analysis.optimizeMixOrder(tracks);
@@ -80,13 +80,13 @@ test('optimizeMixOrder returns same set of tracks', () => {
 
 test('applyFilters supports contains, ranges, and year filters', () => {
   const tracks = [
-    makeTrack({ title: 'Summer Heat', albumReleaseYear: 2015, bpm: 100, energy: 0.4 }),
-    makeTrack({ title: 'Winter Chill', albumReleaseYear: 2018, bpm: 128, energy: 0.8 }),
+    makeTrack({ title: 'Summer Heat', bpm: 100, energy: 0.4 }),
+    makeTrack({ title: 'Winter Chill', bpm: 128, energy: 0.8 }),
   ];
 
   const filtered = analysis.applyFilters(tracks, [
     { field: 'title', kind: 'contains', query: 'summer' },
-    { field: 'albumReleaseYear', kind: 'yearRange', min: 2014, max: 2016 },
+    { field: 'bpm', kind: 'range', min: 95, max: 105 },
     { field: 'energy', kind: 'range', min: 0.3, max: 0.5 },
   ]);
 
@@ -96,13 +96,13 @@ test('applyFilters supports contains, ranges, and year filters', () => {
 
 test('applyFilters supports set and negate qualifiers', () => {
   const tracks = [
-    makeTrack({ title: 'Set A', camelot: '8A', timeSignature: 4 }),
-    makeTrack({ title: 'Set B', camelot: '9A', timeSignature: 3 }),
-    makeTrack({ title: 'Set C', camelot: '8B', timeSignature: 4 }),
+    makeTrack({ title: 'Set A', keyModeLabel: '9 minor', timeSignature: 4 }),
+    makeTrack({ title: 'Set B', keyModeLabel: '10 minor', timeSignature: 3 }),
+    makeTrack({ title: 'Set C', keyModeLabel: '9 major', timeSignature: 4 }),
   ];
 
   const filtered = analysis.applyFilters(tracks, [
-    { field: 'camelot', kind: 'set', values: ['8A', '8B'] },
+    { field: 'keyModeLabel', kind: 'set', values: ['9 minor', '9 major'] },
     { field: 'timeSignature', kind: 'set', values: ['4'], negate: true },
   ]);
 
@@ -115,7 +115,6 @@ test('detectOutliers ranks unusual item higher', () => {
       title: `Normal ${index}`,
       bpm: 118 + index,
       energy: 0.55,
-      albumReleaseYear: 2019,
       genres: ['dance pop'],
     })
   );
@@ -166,7 +165,7 @@ test('sequenceGenreClusters preserves track set', () => {
     makeTrack({ title: 'Hip Hop 2', genres: ['hip hop'], bpm: 95 }),
   ];
 
-  const sequenced = analysis.sequenceGenreClusters(tracks, { mode: 'club-flow', weights: {} });
+  const sequenced = analysis.sequenceGenreClusters(tracks, { mode: 'club-beat-driven', weights: {} });
   assert.equal(sequenced.length, tracks.length);
   assert.deepEqual(
     [...sequenced.map((item) => item.title)].sort(),
@@ -176,16 +175,58 @@ test('sequenceGenreClusters preserves track set', () => {
 
 test('computeTransitionDiagnostics returns adjacency metrics', () => {
   const tracks = [
-    makeTrack({ title: 'A', bpm: 110, camelot: '8A' }),
-    makeTrack({ title: 'B', bpm: 114, camelot: '8B' }),
-    makeTrack({ title: 'C', bpm: 128, camelot: '10A' }),
+    makeTrack({ title: 'A', bpm: 110, key: 9, mode: 0 }),
+    makeTrack({ title: 'B', bpm: 114, key: 10, mode: 0 }),
+    makeTrack({ title: 'C', bpm: 128, key: 0, mode: 1 }),
   ];
 
   const diagnostics = analysis.computeTransitionDiagnostics(tracks, {
-    mode: 'balanced',
+    mode: 'generic',
     weights: {},
   });
   assert.equal(diagnostics.length, 2);
   assert.equal(typeof diagnostics[0].score, 'number');
-  assert.equal(typeof diagnostics[0].camelotDistance, 'number');
+  assert.equal(typeof diagnostics[0].harmonicScore, 'number');
+  assert.equal(typeof diagnostics[0].artistSpacingBonus, 'number');
+});
+
+test('artist avoidance can be disabled in transition diagnostics', () => {
+  const tracks = [
+    makeTrack({ title: 'A', artistDisplay: 'Artist One' }),
+    makeTrack({ title: 'B', artistDisplay: 'Artist One' }),
+  ];
+
+  const diagnostics = analysis.computeTransitionDiagnostics(tracks, {
+    mode: 'generic',
+    weights: {},
+    artistAvoidance: { enabled: false, strength: 1 },
+  });
+
+  assert.equal(diagnostics[0].artistSpacingBonus, 0);
+});
+
+test('mix mode defaults expose the expected preset names and weights', () => {
+  assert.deepEqual(Object.keys(analysis.MIX_MODES), [
+    'smooth-harmonic',
+    'club-beat-driven',
+    'quick-transition',
+    'generic',
+  ]);
+  assert.equal(analysis.DEFAULT_WEIGHTS.genre, 0.1);
+  assert.equal(analysis.DEFAULT_WEIGHTS.harmonic, 0.22);
+  assert.equal(analysis.MIX_MODES['smooth-harmonic'].harmonic, 0.24);
+  assert.equal(analysis.MIX_MODES['club-beat-driven'].bpm, 0.24);
+  assert.equal(analysis.MIX_MODES['quick-transition'].energy, 0.18);
+  assert.equal(analysis.MIX_MODES.generic.liveness, 0.01);
+});
+
+test('detectOutliers returns original working index for removal actions', () => {
+  const tracks = [
+    makeTrack({ title: 'A' }),
+    makeTrack({ title: 'B', bpm: 70, energy: 0.1, genres: ['bebop'] }),
+  ];
+
+  const ranked = analysis.detectOutliers(tracks);
+  assert.ok(ranked.every((item) => Number.isInteger(item.index)));
+  assert.equal(ranked.find((item) => item.track.title === 'B')?.index, 1);
 });

@@ -17,15 +17,17 @@ const STORAGE_KEYS = {
   weightPresets: 'spotifyManager.weightPresets.v2',
 };
 
+const DEFAULT_ARTIST_AVOIDANCE = {
+  enabled: true,
+  strength: 1,
+};
+
 const FILTER_FIELD_IDS = [
   'filterTitle',
   'filterArtist',
   'filterGenre',
-  'filterCamelot',
   'filterKeyMode',
   'filterTimeSig',
-  'filterYearMin',
-  'filterYearMax',
   'filterDurationMsMin',
   'filterDurationMsMax',
   'filterBpmMin',
@@ -124,6 +126,7 @@ const queueTableRender = createTableRenderQueue(async (tracks, options = {}) => 
       columns: rebuildColumns ? buildTabulatorColumns() : null,
       sort: state.tableSort,
       resetScroll,
+      forceRedraw: rebuildColumns,
       getActiveData: getActiveTableData,
       log: dlog,
       debugLabel,
@@ -150,7 +153,7 @@ const queueTableRender = createTableRenderQueue(async (tracks, options = {}) => 
 
 const MIX_WEIGHT_FIELDS = [
   ['bpm', 'BPM'],
-  ['camelot', 'Camelot'],
+  ['harmonic', 'Harmonic'],
   ['energy', 'Energy'],
   ['danceability', 'Danceability'],
   ['valence', 'Valence'],
@@ -169,13 +172,11 @@ const columns = [
   ['albumName', 'Album'],
   ['recordLabel', 'Label'],
   ['albumReleaseDate', 'Album Date'],
-  ['albumReleaseYear', 'Year'],
   ['addedAt', 'Added At'],
   ['addedBy', 'Added By'],
   ['durationMs', 'Duration (ms)'],
   ['bpm', 'BPM'],
   ['tempo', 'Tempo'],
-  ['camelot', 'Camelot'],
   ['key', 'Key'],
   ['mode', 'Mode'],
   ['energy', 'Energy'],
@@ -559,13 +560,63 @@ function getCurrentSliderWeights() {
   return result;
 }
 
+function refreshMixSliderValueLabels() {
+  MIX_WEIGHT_FIELDS.forEach(([field]) => {
+    const input = get(`mixWeight_${field}`);
+    const valueEl = get(`mixWeight_${field}_value`);
+    if (!input || !valueEl) return;
+    valueEl.textContent = `${input.value}%`;
+  });
+}
+
+function getArtistAvoidanceOptions() {
+  const enabled = Boolean(get('artistAvoidanceEnabled')?.checked);
+  const rawStrength = Number(get('artistAvoidanceStrength')?.value || 0);
+  return {
+    enabled,
+    strength: Math.max(0, Math.min(1, rawStrength / 100)),
+  };
+}
+
+function refreshArtistAvoidanceControl() {
+  const options = getArtistAvoidanceOptions();
+  const input = get('artistAvoidanceStrength');
+  const valueEl = get('artistAvoidanceStrengthValue');
+  const host = input?.closest('.mix-slider-item-artist');
+  if (input) {
+    input.disabled = !options.enabled;
+  }
+  if (host) {
+    host.classList.toggle('is-disabled', !options.enabled);
+  }
+  if (valueEl) {
+    valueEl.textContent = options.enabled ? `${Math.round(options.strength * 100)}%` : 'Off';
+  }
+}
+
+function setArtistAvoidanceOptions(options) {
+  const normalized = { ...DEFAULT_ARTIST_AVOIDANCE, ...(options || {}) };
+  const checkbox = get('artistAvoidanceEnabled');
+  const slider = get('artistAvoidanceStrength');
+  if (checkbox) {
+    checkbox.checked = Boolean(normalized.enabled);
+  }
+  if (slider) {
+    const numericStrength = Number(normalized.strength ?? DEFAULT_ARTIST_AVOIDANCE.strength);
+    slider.value = String(Math.round(Math.max(0, Math.min(1, numericStrength)) * 100));
+  }
+  refreshArtistAvoidanceControl();
+}
+
 function setSliderWeights(weights) {
   MIX_WEIGHT_FIELDS.forEach(([field]) => {
     const input = get(`mixWeight_${field}`);
     if (!input) return;
-    const value = Number(weights?.[field] ?? 0);
+    const fallbackValue = field === 'harmonic' ? weights?.camelot : undefined;
+    const value = Number(weights?.[field] ?? fallbackValue ?? 0);
     input.value = String(Math.round(Math.max(0, value) * 100));
   });
+  refreshMixSliderValueLabels();
 }
 
 function normalizeWeightsIfNeeded(weights) {
@@ -582,34 +633,54 @@ function updateMixWeightSummary() {
   const weights = getCurrentSliderWeights();
   const totalPercent = Object.values(weights).reduce((sum, value) => sum + value * 100, 0);
   const summary = get('mixWeightTotal');
+  const artistAvoidance = getArtistAvoidanceOptions();
+  const artistText = artistAvoidance.enabled
+    ? ` | artist repeat penalty: ${(artistAvoidance.strength * 100).toFixed(0)}%`
+    : ' | artist repeat penalty: off';
   if (totalPercent <= 100) {
-    summary.textContent = `Total: ${totalPercent.toFixed(1)}%`;
+    summary.textContent = `Total: ${totalPercent.toFixed(1)}%${artistText}`;
   } else {
-    summary.textContent = `Total: ${totalPercent.toFixed(1)}% (will normalize to 100%)`;
+    summary.textContent = `Total: ${totalPercent.toFixed(1)}% (will normalize to 100%)${artistText}`;
   }
 }
 
 function renderMixWeightSliders(initialWeights) {
   const host = get('mixWeightSliders');
-  host.innerHTML = MIX_WEIGHT_FIELDS
-    .map(
-      ([field, label]) => `
+  const weightTiles = MIX_WEIGHT_FIELDS.map(
+    ([field, label]) => `
       <label class="mix-slider-item" for="mixWeight_${field}">
         <span>${label}</span>
         <input id="mixWeight_${field}" type="range" min="0" max="100" step="1" />
         <span id="mixWeight_${field}_value" class="subtle"></span>
       </label>
     `
-    )
-    .join('');
+  );
+
+  weightTiles.push(`
+    <div class="mix-slider-item mix-slider-item-artist">
+      <div class="mix-slider-heading-row">
+        <span>Artist Repeat Penalty</span>
+      </div>
+      <input id="artistAvoidanceStrength" type="range" min="0" max="100" step="1" value="100" />
+      <div class="mix-slider-meta-row">
+        <span id="artistAvoidanceStrengthValue" class="subtle"></span>
+        <label class="mix-toggle-inline" for="artistAvoidanceEnabled">
+          <span>Enable</span>
+          <input id="artistAvoidanceEnabled" type="checkbox" checked />
+        </label>
+      </div>
+    </div>
+  `);
+
+  host.innerHTML = weightTiles.join('');
 
   setSliderWeights(initialWeights || analysis.DEFAULT_WEIGHTS);
+  setArtistAvoidanceOptions(DEFAULT_ARTIST_AVOIDANCE);
 
   MIX_WEIGHT_FIELDS.forEach(([field]) => {
     const input = get(`mixWeight_${field}`);
-    const valueEl = get(`mixWeight_${field}_value`);
     const sync = () => {
-      valueEl.textContent = `${input.value}%`;
+      refreshMixSliderValueLabels();
       updateMixWeightSummary();
     };
     input.addEventListener('input', sync);
@@ -706,17 +777,12 @@ function syncColumnConfigFromTable() {
 
 function refreshHeaderFilterVisuals() {
   if (!tracksTable || typeof tracksTable.getColumns !== 'function') return;
-  const labelsByField = new Map(columns.map(([field, label]) => [field, label]));
 
   tracksTable.getColumns().forEach((col) => {
     const field = col.getField();
-    const label = labelsByField.get(field);
-    if (!field || !label) return;
+    if (!field) return;
     const icon = col.getElement()?.querySelector('.header-filter-icon');
-    if (!icon) {
-      col.updateDefinition({ title: buildHeaderTitle(label, field) });
-      return;
-    }
+    if (!icon) return;
     icon.classList.toggle('is-active', isHeaderFieldFiltered(field));
   });
 }
@@ -876,8 +942,12 @@ function initializeTable(initialTracks = []) {
         data: initialTracks || [],
         columns: buildTabulatorColumns(),
         layout: 'fitDataTable',
+        height: '54vh',
+        rowHeight: 34,
+        autoResize: false,
         movableColumns: true,
         resizableColumns: true,
+        resizableColumnFit: false,
         selectableRows: true,
         selectableRowsRangeMode: 'click',
         placeholder: 'No tracks to display.',
@@ -940,7 +1010,6 @@ function getHeaderFilterConfig(field) {
   }
 
   const rangeMap = {
-    albumReleaseYear: { minId: 'filterYearMin', maxId: 'filterYearMax' },
     durationMs: { minId: 'filterDurationMsMin', maxId: 'filterDurationMsMax' },
     bpm: { minId: 'filterBpmMin', maxId: 'filterBpmMax' },
     tempo: { minId: 'filterTempoMin', maxId: 'filterTempoMax' },
@@ -963,10 +1032,6 @@ function getHeaderFilterConfig(field) {
 
   if (field === 'timeSignature') {
     return { kind: 'set', inputId: 'filterTimeSig' };
-  }
-
-  if (field === 'camelot') {
-    return { kind: 'set', inputId: 'filterCamelot' };
   }
 
   if (field === 'keyModeLabel') {
@@ -1337,19 +1402,7 @@ function buildFiltersFromInputs() {
   addContains('title', 'filterTitle');
   addContains('artistDisplay', 'filterArtist');
   addContains('genreDisplay', 'filterGenre');
-  addSet('camelot', 'filterCamelot');
   addSet('keyModeLabel', 'filterKeyMode');
-
-  const yearMin = getInputTrim('filterYearMin');
-  const yearMax = getInputTrim('filterYearMax');
-  if (yearMin || yearMax || state.filterNegations.albumReleaseYear) {
-    addNegation('albumReleaseYear', {
-      field: 'albumReleaseYear',
-      kind: 'yearRange',
-      min: yearMin,
-      max: yearMax,
-    });
-  }
 
   addRange('durationMs', 'filterDurationMsMin', 'filterDurationMsMax');
   addRange('bpm', 'filterBpmMin', 'filterBpmMax', 'filterBpmMinLegacy', 'filterBpmMaxLegacy');
@@ -1804,48 +1857,6 @@ function toBooleanOrNull(value) {
   return null;
 }
 
-function parseYearFromDateLike(value) {
-  const text = String(value || '').trim();
-  if (!text) return null;
-  const year = Number(text.slice(0, 4));
-  return Number.isFinite(year) ? year : null;
-}
-
-function toCamelotFromKeyMode(key, mode) {
-  const k = Number(key);
-  const m = Number(mode);
-  if (!Number.isFinite(k) || !Number.isFinite(m)) return null;
-  const major = {
-    0: '8B',
-    1: '3B',
-    2: '10B',
-    3: '5B',
-    4: '12B',
-    5: '7B',
-    6: '2B',
-    7: '9B',
-    8: '4B',
-    9: '11B',
-    10: '6B',
-    11: '1B',
-  };
-  const minor = {
-    0: '5A',
-    1: '12A',
-    2: '7A',
-    3: '2A',
-    4: '9A',
-    5: '4A',
-    6: '11A',
-    7: '6A',
-    8: '1A',
-    9: '8A',
-    10: '3A',
-    11: '10A',
-  };
-  return m === 1 ? major[k] || null : minor[k] || null;
-}
-
 async function csvRowsToTracksAsync(rows, progressCb = null) {
   if (rows.length < 2) return [];
   const header = rows[0].map((item) => String(item || '').trim());
@@ -1871,7 +1882,6 @@ async function csvRowsToTracksAsync(rows, progressCb = null) {
       albumName: read(cells, 'Album Name') || null,
       artistDisplay: read(cells, 'Artist Name(s)') || null,
       albumReleaseDate: read(cells, 'Release Date') || null,
-      albumReleaseYear: parseYearFromDateLike(read(cells, 'Release Date')),
       durationMs: toNumberOrNull(read(cells, 'Duration (ms)')),
       durationSeconds: (() => {
         const ms = toNumberOrNull(read(cells, 'Duration (ms)'));
@@ -1901,7 +1911,6 @@ async function csvRowsToTracksAsync(rows, progressCb = null) {
         Number.isFinite(key) && Number.isFinite(mode)
           ? `${key}${mode === 1 ? ' major' : ' minor'}`
           : null,
-      camelot: toCamelotFromKeyMode(key, mode),
       analysisAvailable: false,
     });
 
@@ -2047,13 +2056,16 @@ function renderOutliers() {
   const report = analysis.detectOutliers(state.workingTracks);
   const html = report
     .map(
-      ({ track, outlierScore, strongestReason, reasons }) => `
+      ({ index, track, outlierScore, strongestReason, reasons }) => `
         <div class="diagnostic-item">
           <div class="diagnostic-line">
             <span class="diagnostic-title">${escapeHtml(track.title)}<span class="subtle-inline">${escapeHtml(track.artistDisplay || 'Unknown Artist')}</span></span>
             <span class="diagnostic-metrics">score:${fmt(outlierScore, 3)}</span>
           </div>
           <div class="diagnostic-reason">${escapeHtml(strongestReason || reasons?.[0] || 'Audio profile deviates from playlist center.')}</div>
+          <div class="diagnostic-actions">
+            <button class="btn btn-small" type="button" data-remove-outlier-index="${index}">Remove</button>
+          </div>
         </div>
       `
     )
@@ -2061,15 +2073,29 @@ function renderOutliers() {
   get('outliersResult').innerHTML = html || 'No outliers detected.';
 }
 
+function removeOutlierTrack(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= state.workingTracks.length) {
+    return;
+  }
+  const track = state.workingTracks[index];
+  if (!track) return;
+  removeTracksByReference([track]);
+  renderOutliers();
+}
+
 function getMixOptions() {
-  const mode = get('mixModeSelect').value || 'balanced';
+  const mode = get('mixModeSelect').value || 'generic';
   const weights = getCurrentSliderWeights();
   const { normalized, total } = normalizeWeightsIfNeeded(weights);
   if (total > 1) {
     setSliderWeights(normalized);
     updateMixWeightSummary();
   }
-  return { mode, weights: normalized };
+  return {
+    mode,
+    weights: normalized,
+    artistAvoidance: getArtistAvoidanceOptions(),
+  };
 }
 
 function normalizeTrackKeys(tracks) {
@@ -2135,7 +2161,7 @@ function renderTransitionDiagnostics() {
         <div class="diagnostic-item transition-item">
           <div class="diagnostic-line">
             <span class="diagnostic-title">${escapeHtml(`${row.index + 1}. ${row.fromTitle} → ${row.toTitle}`)}</span>
-            <span class="diagnostic-metrics">score:${fmt(row.score, 3)} | dBPM:${fmt(row.bpmDelta, 2)} | camelot:${fmt(row.camelotDistance, 3)}</span>
+            <span class="diagnostic-metrics">score:${fmt(row.score, 3)} | pair:${fmt(row.transitionScore, 3)} | dBPM:${fmt(row.bpmDelta, 2)} | harmonic:${fmt(row.harmonicScore, 3)} | artist:${fmt(row.artistSpacingBonus, 3)}</span>
           </div>
         </div>
       `
@@ -2460,6 +2486,7 @@ function saveWeightPreset() {
   state.weightPresets[name] = {
     mode: options.mode,
     weights: options.weights,
+    artistAvoidance: options.artistAvoidance,
   };
   saveObjectToStorage(STORAGE_KEYS.weightPresets, state.weightPresets);
   refreshPresetSelect('weightPresetSelect', state.weightPresets, 'Choose weights preset');
@@ -2474,8 +2501,9 @@ function loadWeightPreset() {
     setMessage('Choose a weights preset to load.', true);
     return;
   }
-  get('mixModeSelect').value = preset.mode || 'balanced';
+  get('mixModeSelect').value = preset.mode || 'generic';
   setSliderWeights(preset.weights || {});
+  setArtistAvoidanceOptions(preset.artistAvoidance || DEFAULT_ARTIST_AVOIDANCE);
   updateMixWeightSummary();
   setMessage(`Loaded weights preset: ${name}`);
 }
@@ -2717,10 +2745,26 @@ async function bindEvents() {
     applyModePresetToSliders(get('mixModeSelect').value);
   });
 
+  get('artistAvoidanceEnabled').addEventListener('change', () => {
+    refreshArtistAvoidanceControl();
+    updateMixWeightSummary();
+  });
+
+  get('artistAvoidanceStrength').addEventListener('input', () => {
+    refreshArtistAvoidanceControl();
+    updateMixWeightSummary();
+  });
+
   get('outliersBtn').addEventListener('click', () => {
     if (!state.workingTracks.length) return;
     renderOutliers();
     setMessage('Outlier report generated.');
+  });
+
+  get('outliersResult').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-outlier-index]');
+    if (!button) return;
+    removeOutlierTrack(Number(button.dataset.removeOutlierIndex));
   });
 
   get('resetOrderBtn').addEventListener('click', resetToOriginalOrder);

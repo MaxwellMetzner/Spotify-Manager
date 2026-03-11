@@ -16,7 +16,7 @@ Spotify Manager is a desktop Electron app for advanced playlist editing and anal
 - Load playlist tracks with expanded metadata, including:
   - Track details: title, artists, album, explicit, popularity, duration, added at.
   - Audio feature details: tempo/BPM, key, mode, danceability, energy, valence, loudness, acousticness, instrumentalness, speechiness, liveness, time signature.
-  - Derived fields: Camelot key, release year, genre tags from artists, custom order index.
+  - Local workflow fields: custom order index and any CSV-provided genre tags.
 - Sort directly in-table by clicking column headers.
 - Right-click headers for quick filters; active filters are shown as chips.
 - Resize and reorder columns in the table.
@@ -25,8 +25,8 @@ Spotify Manager is a desktop Electron app for advanced playlist editing and anal
 - Smart near-duplicate scoring and recommended keep candidate ranking.
 - Shuffle tracks one or more passes.
 - Mix Assist ordering with configurable weights in `config/mix-weights.json`.
-- Multi-objective mix modes (`balanced`, `club-flow`, `energy-ramp`, `chill-arc`) and genre sequencing.
-- Outlier detection with explainable score based on audio profile, era deviation, and genre rarity.
+- Mix modes (`smooth-harmonic`, `club-beat-driven`, `quick-transition`, `generic`) and genre sequencing for CSV-backed workflows.
+- Outlier detection with explainable score based on audio profile and genre rarity.
 - Filter tracks by metadata and create a new playlist from filtered results.
 - Undo/redo action history.
 - Transition diagnostics for adjacent tracks in current order (Mix tab).
@@ -40,7 +40,7 @@ Spotify Manager is a desktop Electron app for advanced playlist editing and anal
 - Spotify's current API responses may not include all historical metadata fields consistently for every track.
 - For richer metadata workflows (for example CSV imports produced by Exportify), use:
   - `https://exportify.net/` to export playlist CSVs.
-  - The app's CSV import to load that metadata into the local workflow.
+  - The app's CSV import to load that metadata into the local workflow, including genres plus key/mode fields used by Mix Assist.
 
 ## Spotify API research notes
 
@@ -59,7 +59,6 @@ This app uses Spotify Web API and OAuth2 flows based on Spotify docs:
   - `GET /playlists/{playlist_id}`
   - `GET /playlists/{playlist_id}/items`
   - `GET /audio-features?ids=...`
-  - `GET /artists?ids=...`
   - `PUT /playlists/{playlist_id}/items` and `POST /playlists/{playlist_id}/items`
   - `POST /me/playlists`
 

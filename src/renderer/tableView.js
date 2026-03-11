@@ -55,6 +55,7 @@ export async function applyTableData({
   columns = null,
   sort = null,
   resetScroll = true,
+  forceRedraw = true,
   getActiveData = () => [],
   log = dlog,
   debugLabel = 'tableRender',
@@ -74,6 +75,7 @@ export async function applyTableData({
     rows: rows.length,
     rebuildColumns,
     resetScroll,
+    forceRedraw,
     hasReadyPromise: Boolean(ready),
     sort,
   });
@@ -106,7 +108,7 @@ export async function applyTableData({
     await withTimeout(asPromise(table.setSort([])), sortTimeout, 'Table sort reset', log, { debugLabel });
   }
 
-  if (typeof table.redraw === 'function') {
+  if (forceRedraw && typeof table.redraw === 'function') {
     log('Table redraw:scheduled', { debugLabel });
     void asPromise(table.redraw(true)).catch((error) => {
       log('Table redraw:error', {
