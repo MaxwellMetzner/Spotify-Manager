@@ -134,7 +134,6 @@ const queueTableRender = createTableRenderQueue(async (tracks, options = {}) => 
 
     state.renderTracks = activeTracks;
     refreshHeaderFilterVisuals();
-    renderVisibleRows();
     dlog('renderTable:done', {
       debugLabel,
       rows: tracks?.length || 0,
@@ -1066,10 +1065,6 @@ function isHeaderFieldFiltered(field) {
   return Boolean(value || state.filterNegations[field]);
 }
 
-function renderVisibleRows() {
-  // Row count intentionally suppressed to keep one concise status message.
-}
-
 function setTableLoading(loading) {
   const wrap = get('tracksTableWrap');
   if (!wrap) return;
@@ -1300,11 +1295,6 @@ function clearHeaderFilterPopup() {
   closeHeaderFilterPopup();
 }
 
-function handleHeaderFilterPrompt(field, event) {
-  if (!state.workingTracks.length) return;
-  openHeaderFilterPopup(field, event.clientX, event.clientY);
-}
-
 function bindHeaderFilterPopupEvents() {
   get('headerFilterApplyBtn').addEventListener('click', applyHeaderFilterPopup);
   get('headerFilterClearBtn').addEventListener('click', clearHeaderFilterPopup);
@@ -1487,13 +1477,6 @@ function renderPlaylists() {
   list.querySelectorAll('button[data-playlist-id]').forEach((button) => {
     button.addEventListener('click', () => loadPlaylist(button.dataset.playlistId));
   });
-
-  const bulk = get('bulkPlaylistSelect');
-  if (bulk) {
-    bulk.innerHTML = state.playlists
-      .map((playlist) => `<option value="${playlist.id}">${playlist.name} (${playlist.totalTracks})</option>`)
-      .join('');
-  }
 }
 
 function renderAuthState() {
@@ -1526,6 +1509,7 @@ function renderSetupState() {
   if (!setup) return;
   const setupBtn = get('openSetupWizardBtn');
   const recommendedRedirect = auth.getRecommendedRedirectUri();
+  const recommendedWebsite = auth.getRecommendedWebsiteUrl();
   setStatusBubble(
     'setupStatus',
     setup.hasClientId ? `Configured Client ID: ${setup.clientIdMasked}` : 'Spotify app setup required.',
@@ -1536,7 +1520,15 @@ function renderSetupState() {
 
   const setupHint = get('setupRedirectHintInline');
   if (setupHint) {
-    setupHint.textContent = setup.redirectUri || recommendedRedirect;
+    const redirectText = setup.redirectUri || recommendedRedirect;
+    setupHint.textContent = redirectText;
+    setupHint.dataset.copy = redirectText;
+  }
+
+  const websiteHint = get('setupWebsiteHintInline');
+  if (websiteHint) {
+    websiteHint.textContent = recommendedWebsite;
+    websiteHint.dataset.copy = recommendedWebsite;
   }
 }
 
@@ -2098,57 +2090,6 @@ function getMixOptions() {
   };
 }
 
-function normalizeTrackKeys(tracks) {
-  const occurrence = new Map();
-  return tracks.map((track) => {
-    const base = track.uri || `${track.trackId || ''}-${track.title || ''}-${track.artistDisplay || ''}`;
-    const next = (occurrence.get(base) || 0) + 1;
-    occurrence.set(base, next);
-    return `${base}#${next}`;
-  });
-}
-
-function renderDryRunDiff() {
-  if (!state.baseTracks.length || !state.workingTracks.length) {
-    get('diffResults').textContent = 'Load a playlist to preview changes.';
-    return;
-  }
-  const baseKeys = normalizeTrackKeys(state.baseTracks);
-  const workKeys = normalizeTrackKeys(state.workingTracks);
-
-  const baseIndex = new Map(baseKeys.map((key, index) => [key, index]));
-  const workIndex = new Map(workKeys.map((key, index) => [key, index]));
-
-  const removed = [];
-  const added = [];
-  const moved = [];
-
-  baseKeys.forEach((key) => {
-    if (!workIndex.has(key)) removed.push(key);
-  });
-  workKeys.forEach((key) => {
-    if (!baseIndex.has(key)) added.push(key);
-  });
-  workKeys.forEach((key) => {
-    if (baseIndex.has(key) && workIndex.get(key) !== baseIndex.get(key)) {
-      moved.push({ key, from: baseIndex.get(key), to: workIndex.get(key) });
-    }
-  });
-
-  const details = [
-    `<div>Moved: ${moved.length}</div>`,
-    `<div>Removed: ${removed.length}</div>`,
-    `<div>Added: ${added.length}</div>`,
-  ];
-
-  moved.slice(0, 30).forEach((item) => {
-    const fromTrack = state.baseTracks[item.from];
-    details.push(`<div>${fromTrack?.title || item.key}: ${item.from + 1} -> ${item.to + 1}</div>`);
-  });
-
-  get('diffResults').innerHTML = details.join('<hr/>');
-}
-
 function renderTransitionDiagnostics() {
   if (state.workingTracks.length < 2) {
     get('transitionResults').textContent = 'Need at least 2 tracks for diagnostics.';
@@ -2518,53 +2459,6 @@ function deleteWeightPreset() {
   saveObjectToStorage(STORAGE_KEYS.weightPresets, state.weightPresets);
   refreshPresetSelect('weightPresetSelect', state.weightPresets, 'Choose weights preset');
   setMessage(`Deleted weights preset: ${name}`);
-}
-
-async function runBulkOperation() {
-  dlog('runBulkOperation:start');
-  if (!state.auth?.authenticated) {
-    setMessage('Sign in first to run bulk playlist operations.', true);
-    return;
-  }
-  const selectedOptions = Array.from(get('bulkPlaylistSelect').selectedOptions || []);
-  if (!selectedOptions.length) {
-    setMessage('Select one or more playlists for bulk operation.', true);
-    return;
-  }
-
-  const operation = get('bulkOperationSelect').value;
-  const filters = buildFiltersFromInputs();
-  const mixOptions = getMixOptions();
-  const lines = [];
-
-  for (const option of selectedOptions) {
-    const playlistId = option.value;
-    try {
-      const payload = await api.fetchPlaylistWithMetadata(playlistId);
-      let tracks = payload.tracks;
-      if (operation === 'mix') {
-        tracks = analysis.optimizeMixOrder(tracks, mixOptions);
-      } else {
-        tracks = analysis.applyFilters(tracks, filters);
-      }
-      const uris = tracks.map((track) => track.uri).filter(Boolean);
-      if (!uris.length) {
-        lines.push(`${payload.playlist.name}: no tracks matched operation.`);
-        continue;
-      }
-      const result = await api.createPlaylistFromTracks({
-        name: `${payload.playlist.name} - ${operation === 'mix' ? 'mix copy' : 'filtered copy'}`,
-        description: `Bulk operation: ${operation}`,
-        public: false,
-        trackUris: uris,
-      });
-      lines.push(`${payload.playlist.name}: created ${result.name}`);
-    } catch (error) {
-      lines.push(`${option.textContent}: failed (${error.message})`);
-    }
-  }
-
-  get('bulkResults').innerHTML = lines.map((line) => `<div>${line}</div>`).join('<hr/>');
 }
 
 async function bindEvents() {

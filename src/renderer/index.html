@@ -10,7 +10,10 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../../node_modules/tabulator-tables/dist/css/tabulator.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -204,8 +207,11 @@
             Click <strong>Create app</strong> and fill in:
             <ul>
               <li><strong>App name</strong>: <code class="copy-value" data-copy="Spotify Manager" title="Click to copy">Spotify Manager</code> (or any name you prefer)</li>
-              <li><strong>App description</strong>: <code class="copy-value" data-copy="Advanced Spotify playlist management desktop app" title="Click to copy">Advanced Spotify playlist management desktop app</code></li>
-              <li><strong>Website</strong>: <code class="copy-value" data-copy="http://localhost" title="Click to copy">http://localhost</code></li>
+              <li><strong>App description</strong>: <code class="copy-value" data-copy="Advanced Spotify playlist management web app" title="Click to copy">Advanced Spotify playlist management web app</code></li>
+              <li>
+                <strong>Website</strong>: use the current site URL:
+                <code id="setupWebsiteHintInline" class="copy-value" title="Click to copy">https://example.github.io/Spotify-Manager/</code>
+              </li>
               <li>
                 <strong>Redirect URIs</strong>: add the exact URI shown here:
                 <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">http://127.0.0.1:3000/api/auth/spotify/callback</code>
@@ -296,7 +302,7 @@
       </div>
     </div>
 
-    <script src="../../node_modules/tabulator-tables/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="../shared/analysis.js"></script>
     <script type="module" src="app.js"></script>
   </body>

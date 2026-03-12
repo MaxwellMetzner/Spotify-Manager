@@ -1,6 +1,5 @@
 /**
  * Browser-compatible Spotify authentication using Authorization Code + PKCE.
- * Replaces the Electron main-process auth module.
  */
 
 import { createLogger, getDebugState, maskValue, nowMs } from './debug.js';
@@ -14,6 +13,7 @@ const PKCE_SESSION_STATE_KEY = 'spotify_pkce_state';
 const PKCE_SESSION_VERIFIER_KEY = 'spotify_pkce_verifier';
 const PKCE_TRANSACTION_KEY = 'spotifyManager.pkceTransaction';
 const API_REQUEST_TIMEOUT_MS = 15000;
+const LOOPBACK_FALLBACK_ORIGIN = 'http://127.0.0.1:3000';
 
 const SCOPES = [
   'playlist-read-private',
@@ -89,19 +89,56 @@ function buildStateMismatchMessage({ state, expectedState, transaction, redirect
   return `Authorization state mismatch. Expected ${maskValue(expectedState)} but received ${maskValue(state)}. Sign in again.`;
 }
 
-function getDefaultRedirectUri() {
-  const loc = window.location;
-  let port = loc.port;
-  if (!port) {
-    try {
-      port = new URL(loc.origin).port;
-    } catch {
-      port = '';
+function ensureTrailingSlash(pathname) {
+  return pathname.endsWith('/') ? pathname : `${pathname}/`;
+}
+
+function getAppBasePathname() {
+  const current = currentLocationUrl();
+  if (!current) return '/';
+
+  const pathname = current.pathname || '/';
+  const knownSuffixes = [
+    /\/src\/renderer(?:\/.*)?$/i,
+    /\/api\/auth\/spotify\/callback(?:\/.*)?$/i,
+    /\/index\.html$/i,
+  ];
+
+  for (const suffix of knownSuffixes) {
+    if (suffix.test(pathname)) {
+      return ensureTrailingSlash(pathname.replace(suffix, '/'));
     }
   }
-  if (!port) port = '3000';
-  // Spotify disallows localhost in redirect URIs; use explicit loopback literal.
-  return `http://127.0.0.1:${port}/api/auth/spotify/callback`;
+
+  if (pathname.endsWith('/')) {
+    return pathname;
+  }
+
+  const lastSlash = pathname.lastIndexOf('/');
+  return ensureTrailingSlash(lastSlash >= 0 ? pathname.slice(0, lastSlash + 1) : '/');
+}
+
+function getCurrentOriginForAppUrls() {
+  const current = currentLocationUrl();
+  if (!current) {
+    return new URL(LOOPBACK_FALLBACK_ORIGIN);
+  }
+
+  const origin = new URL(current.origin);
+  if (origin.protocol === 'http:') {
+    origin.hostname = normalizeLoopbackHostname(origin.hostname);
+  }
+  return origin;
+}
+
+function buildAppUrl(relativePath = '') {
+  const basePath = getAppBasePathname();
+  const normalizedPath = String(relativePath || '').replace(/^\/+/, '');
+  return new URL(`${basePath}${normalizedPath}`, getCurrentOriginForAppUrls());
+}
+
+function getDefaultRedirectUri() {
+  return buildAppUrl('api/auth/spotify/callback').toString();
 }
 
 function isLegacyLoopbackRedirect(uri) {
@@ -151,6 +188,10 @@ function resolveStoredRedirectUri(storedRedirectUri) {
 
 export function getRecommendedRedirectUri() {
   return getDefaultRedirectUri();
+}
+
+export function getRecommendedWebsiteUrl() {
+  return buildAppUrl('').toString();
 }
 
 export function ensureCanonicalLoopbackOrigin() {
@@ -248,7 +289,7 @@ function validateSetupInput({ clientId, redirectUri }) {
   try {
     parsed = new URL(redirectUri);
   } catch {
-    throw new Error('Redirect URI must be a valid absolute URL (for example http://127.0.0.1:3000/api/auth/spotify/callback).');
+    throw new Error('Redirect URI must be a valid absolute URL (for example https://<user>.github.io/<repo>/api/auth/spotify/callback or http://127.0.0.1:3000/api/auth/spotify/callback).');
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {

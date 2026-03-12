@@ -1,6 +1,5 @@
 /**
  * Browser-compatible Spotify API layer.
- * Replaces the Electron main-process spotifyApi module.
  */
 
 import { getGrantedScopes, getMissingScopes, spotifyRequest } from './auth.js';
@@ -507,30 +506,6 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
   });
 
   return result;
-}
-
-// --------------- Playlist Mutations ---------------
-
-export async function reorderPlaylist(playlistId, trackUris) {
-  dlog('reorderPlaylist:start', {
-    playlistId,
-    tracks: trackUris?.length || 0,
-  });
-  const chunks = chunk(trackUris, 100);
-  const first = chunks[0] || [];
-  const response = await spotifyRequest('PUT', `/playlists/${playlistId}/items`, {}, { uris: first });
-  const snapshotId = response?.snapshot_id;
-
-  for (let index = 1; index < chunks.length; index += 1) {
-    await spotifyRequest('POST', `/playlists/${playlistId}/items`, {}, { uris: chunks[index] });
-  }
-
-  dlog('reorderPlaylist:done', {
-    playlistId,
-    snapshotId,
-    chunks: chunks.length,
-  });
-  return { snapshotId };
 }
 
 export async function createPlaylistFromTracks(payload) {

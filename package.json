@@ -1,7 +1,8 @@
 {
   "name": "spotify-manager",
   "version": "0.2.0",
-  "description": "Web app for advanced Spotify playlist management",
+  "private": true,
+  "description": "Static Spotify playlist manager for GitHub Pages and other static hosts",
   "scripts": {
     "start": "npx serve . -l 3000",
     "test": "node --test Agents/test-analysis.mjs Agents/test-auth.mjs Agents/test-spotifyApi.mjs Agents/test-tableView.mjs"
@@ -13,8 +14,5 @@
     "mix-assist"
   ],
   "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "tabulator-tables": "^6.3.1"
-  }
+  "license": "MIT"
 }

@@ -6,11 +6,12 @@
     <title>Spotify Manager</title>
   </head>
   <body>
-    <noscript><p>JavaScript is required. <a href="/src/renderer/">Open Spotify Manager</a>.</p></noscript>
+    <noscript><p>JavaScript is required. <a href="./src/renderer/">Open Spotify Manager</a>.</p></noscript>
     <script>
-      const query = window.location.search || '';
-      const hash = window.location.hash || '';
-      window.location.replace(`/src/renderer/${query}${hash}`);
+      const target = new URL('./src/renderer/', window.location.href);
+      target.search = window.location.search || '';
+      target.hash = window.location.hash || '';
+      window.location.replace(target.toString());
     </script>
   </body>
 </html>
