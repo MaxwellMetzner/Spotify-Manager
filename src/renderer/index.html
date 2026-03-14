@@ -152,7 +152,8 @@
                 <div class="inline-controls presets-row">
                   <input id="weightPresetName" type="text" placeholder="Weight preset name" />
                   <button id="saveWeightPresetBtn" class="btn btn-small">Save</button>
-                  <select id="weightPresetSelect"></select>
+                  <label for="weightPresetSelect" class="visually-hidden">Weight Preset</label>
+                  <select id="weightPresetSelect" title="Weight Preset"></select>
                   <button id="loadWeightPresetBtn" class="btn btn-small">Load</button>
                   <button id="deleteWeightPresetBtn" class="btn btn-small">Delete</button>
                 </div>
@@ -204,28 +205,29 @@
             If you are not signed in, you may be redirected to <code>developer.spotify.com</code>. Log in from the top-right corner, then click your profile (top-right) and go to <strong>Dashboard</strong>.
           </li>
           <li>
-            Click <strong>Create app</strong> and fill in:
+            Click <strong>Create app</strong> and fill in these exact values for the published GitHub Pages site:
             <ul>
               <li><strong>App name</strong>: <code class="copy-value" data-copy="Spotify Manager" title="Click to copy">Spotify Manager</code> (or any name you prefer)</li>
               <li><strong>App description</strong>: <code class="copy-value" data-copy="Advanced Spotify playlist management web app" title="Click to copy">Advanced Spotify playlist management web app</code></li>
               <li>
-                <strong>Website</strong>: use the current site URL:
-                <code id="setupWebsiteHintInline" class="copy-value" title="Click to copy">https://example.github.io/Spotify-Manager/</code>
+                <strong>Website</strong>: paste this exact site URL:
+                <code id="setupWebsiteHintInline" class="copy-value" title="Click to copy">https://maxwellmetzner.github.io/Spotify-Manager/</code>
               </li>
               <li>
-                <strong>Redirect URIs</strong>: add the exact URI shown here:
-                <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">http://127.0.0.1:3000/api/auth/spotify/callback</code>
+                <strong>Redirect URIs</strong>: click <strong>Add</strong> and paste this exact callback URI:
+                <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">https://maxwellmetzner.github.io/Spotify-Manager/api/auth/spotify/callback</code>
               </li>
               <li><strong>Which API/SDKs are you planning to use?</strong>: <strong>Check the Web API checkbox</strong></li>
               <li><strong>Terms of Service</strong>: <strong>Check the Terms of Service checkbox</strong></li>
             </ul>
           </li>
-          <li>After creating the app, open it and copy your <strong>Client ID</strong>.</li>
-          <li>Paste it below and click <strong>Test &amp; Save</strong>.</li>
+          <li>Click <strong>Save</strong> in Spotify Developer Dashboard, then open the new app and copy its <strong>Client ID</strong>.</li>
+          <li>Paste the Client ID below, leave <strong>SPOTIFY_REDIRECT_URI</strong> exactly as shown for GitHub Pages, then click <strong>Test &amp; Save</strong>.</li>
+          <li>Return to this site and click <strong>Sign In With Spotify</strong>. Spotify must show the same callback URI you added above or the login will fail.</li>
         </ol>
         <div class="filter-grid">
           <label>SPOTIFY_CLIENT_ID <input id="setupClientId" type="text" placeholder="Paste Client ID" /></label>
-          <label>SPOTIFY_REDIRECT_URI <input id="setupRedirectUri" type="text" value="http://127.0.0.1:3000/api/auth/spotify/callback" /></label>
+          <label>SPOTIFY_REDIRECT_URI <input id="setupRedirectUri" type="text" value="https://maxwellmetzner.github.io/Spotify-Manager/api/auth/spotify/callback" /></label>
         </div>
         <div class="inline-controls">
           <button id="createEnvBtn" class="btn btn-primary">Test &amp; Save</button>
@@ -258,7 +260,8 @@
         <div id="csvDropzone" class="csv-dropzone" tabindex="0">
           <strong>Drop CSV file here</strong>
           <span>or click to browse</span>
-          <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden" />
+            <label for="csvFileInput" class="hidden">CSV File</label>
+            <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden" />
         </div>
         <div id="csvImportStatus" class="status"></div>
       </div>

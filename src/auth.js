@@ -14,6 +14,7 @@ const PKCE_SESSION_VERIFIER_KEY = 'spotify_pkce_verifier';
 const PKCE_TRANSACTION_KEY = 'spotifyManager.pkceTransaction';
 const API_REQUEST_TIMEOUT_MS = 15000;
 const LOOPBACK_FALLBACK_ORIGIN = 'http://127.0.0.1:3000';
+const HOSTED_WEBSITE_URL = 'https://maxwellmetzner.github.io/Spotify-Manager/';
 
 const SCOPES = [
   'playlist-read-private',
@@ -141,6 +142,10 @@ function getDefaultRedirectUri() {
   return buildAppUrl('api/auth/spotify/callback').toString();
 }
 
+function getHostedRedirectUri() {
+  return new URL('api/auth/spotify/callback', HOSTED_WEBSITE_URL).toString();
+}
+
 function isLegacyLoopbackRedirect(uri) {
   return /^https?:\/\/(127\.0\.0\.1|localhost):8888\/callback\/?$/i.test(String(uri || '').trim());
 }
@@ -192,6 +197,14 @@ export function getRecommendedRedirectUri() {
 
 export function getRecommendedWebsiteUrl() {
   return buildAppUrl('').toString();
+}
+
+export function getHostedWebsiteUrl() {
+  return HOSTED_WEBSITE_URL;
+}
+
+export function getHostedRedirectUriForSetup() {
+  return getHostedRedirectUri();
 }
 
 export function ensureCanonicalLoopbackOrigin() {

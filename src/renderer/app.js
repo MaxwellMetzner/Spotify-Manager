@@ -1508,8 +1508,8 @@ function renderSetupState() {
   const setup = state.setup;
   if (!setup) return;
   const setupBtn = get('openSetupWizardBtn');
-  const recommendedRedirect = auth.getRecommendedRedirectUri();
-  const recommendedWebsite = auth.getRecommendedWebsiteUrl();
+  const recommendedRedirect = auth.getHostedRedirectUriForSetup();
+  const recommendedWebsite = auth.getHostedWebsiteUrl();
   setStatusBubble(
     'setupStatus',
     setup.hasClientId ? `Configured Client ID: ${setup.clientIdMasked}` : 'Spotify app setup required.',
@@ -2728,7 +2728,7 @@ async function init() {
   try {
     await refreshSetupState();
     const setupHint = get('setupRedirectHintInline');
-    if (setupHint) setupHint.textContent = state.setup?.redirectUri || auth.getRecommendedRedirectUri();
+    if (setupHint) setupHint.textContent = state.setup?.redirectUri || auth.getHostedRedirectUriForSetup();
 
     // Handle OAuth callback if redirected from Spotify
     try {
