@@ -197,33 +197,27 @@
           <h3 id="setupTitle">Spotify Setup Wizard</h3>
           <button id="closeSetupModalBtn" class="btn btn-small">Close</button>
         </div>
-        <p class="subtle">This wizard stores your Spotify app settings locally for browser sign-in.</p>
+        <p class="subtle">Create a Spotify app, copy the Client ID, and save it here for browser sign-in.</p>
         <ol class="setup-steps">
           <li>
             Open
             <a class="setup-link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Spotify Developer Dashboard</a>.
-            If you are not signed in, you may be redirected to <code>developer.spotify.com</code>. Log in from the top-right corner, then click your profile (top-right) and go to <strong>Dashboard</strong>.
+            Click <strong>Create app</strong>.
           </li>
           <li>
-            Click <strong>Create app</strong> and fill in these exact values for the published GitHub Pages site:
+            In the Spotify form, only these fields matter:
             <ul>
               <li><strong>App name</strong>: <code class="copy-value" data-copy="Spotify Manager" title="Click to copy">Spotify Manager</code> (or any name you prefer)</li>
               <li><strong>App description</strong>: <code class="copy-value" data-copy="Advanced Spotify playlist management web app" title="Click to copy">Advanced Spotify playlist management web app</code></li>
-              <li>
-                <strong>Website</strong>: paste this exact site URL:
-                <code id="setupWebsiteHintInline" class="copy-value" title="Click to copy">https://maxwellmetzner.github.io/Spotify-Manager/</code>
-              </li>
               <li>
                 <strong>Redirect URIs</strong>: click <strong>Add</strong> and paste this exact callback URI:
                 <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">https://maxwellmetzner.github.io/Spotify-Manager/api/auth/spotify/callback</code>
               </li>
               <li><strong>Which API/SDKs are you planning to use?</strong>: <strong>Check the Web API checkbox</strong></li>
-              <li><strong>Terms of Service</strong>: <strong>Check the Terms of Service checkbox</strong></li>
             </ul>
           </li>
-          <li>Click <strong>Save</strong> in Spotify Developer Dashboard, then open the new app and copy its <strong>Client ID</strong>.</li>
-          <li>Paste the Client ID below, leave <strong>SPOTIFY_REDIRECT_URI</strong> exactly as shown for GitHub Pages, then click <strong>Test &amp; Save</strong>.</li>
-          <li>Return to this site and click <strong>Sign In With Spotify</strong>. Spotify must show the same callback URI you added above or the login will fail.</li>
+          <li>Click <strong>Save</strong>, open the new app, and copy its <strong>Client ID</strong>.</li>
+          <li>Paste the Client ID below, leave the redirect URI exactly as shown, then click <strong>Test &amp; Save</strong>.</li>
         </ol>
         <div class="filter-grid">
           <label>SPOTIFY_CLIENT_ID <input id="setupClientId" type="text" placeholder="Paste Client ID" /></label>

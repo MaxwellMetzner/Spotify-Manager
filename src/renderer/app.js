@@ -1509,7 +1509,6 @@ function renderSetupState() {
   if (!setup) return;
   const setupBtn = get('openSetupWizardBtn');
   const recommendedRedirect = auth.getHostedRedirectUriForSetup();
-  const recommendedWebsite = auth.getHostedWebsiteUrl();
   setStatusBubble(
     'setupStatus',
     setup.hasClientId ? `Configured Client ID: ${setup.clientIdMasked}` : 'Spotify app setup required.',
@@ -1523,12 +1522,6 @@ function renderSetupState() {
     const redirectText = setup.redirectUri || recommendedRedirect;
     setupHint.textContent = redirectText;
     setupHint.dataset.copy = redirectText;
-  }
-
-  const websiteHint = get('setupWebsiteHintInline');
-  if (websiteHint) {
-    websiteHint.textContent = recommendedWebsite;
-    websiteHint.dataset.copy = recommendedWebsite;
   }
 }
 
@@ -2113,6 +2106,7 @@ function renderTransitionDiagnostics() {
 async function refreshSetupState() {
   state.setup = auth.getSetupState();
   renderSetupState();
+  renderAuthState();
 }
 
 async function testAndSaveSetupWizard() {
