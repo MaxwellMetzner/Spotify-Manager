@@ -351,15 +351,34 @@ export function testSetupConfig({ clientId, redirectUri }) {
 
 // --------------- Setup / Config ---------------
 
+function readStoredSetup() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SETUP_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export function getSetupState() {
-  let stored;
-  try { stored = JSON.parse(localStorage.getItem(SETUP_KEY) || '{}'); } catch { stored = {}; }
+  const stored = readStoredSetup();
   const clientId = stored.clientId || '';
   const redirectUri = resolveStoredRedirectUri(stored.redirectUri);
   return {
     hasClientId: Boolean(clientId),
     clientIdMasked: clientId ? `${clientId.slice(0, 4)}...${clientId.slice(-4)}` : '',
     redirectUri,
+  };
+}
+
+export function getSavedSetupConfig() {
+  const stored = readStoredSetup();
+  const clientId = String(stored.clientId || '').trim();
+  return {
+    clientId,
+    hasClientId: Boolean(clientId),
+    clientIdMasked: clientId ? `${clientId.slice(0, 4)}...${clientId.slice(-4)}` : '',
+    redirectUri: resolveStoredRedirectUri(stored.redirectUri),
   };
 }
 
@@ -371,8 +390,7 @@ export function saveSetup({ clientId, redirectUri }) {
 }
 
 function getConfig() {
-  let stored;
-  try { stored = JSON.parse(localStorage.getItem(SETUP_KEY) || '{}'); } catch { stored = {}; }
+  const stored = readStoredSetup();
   const clientId = stored.clientId || '';
   const redirectUri = resolveStoredRedirectUri(stored.redirectUri);
   if (!clientId) throw new Error('Missing SPOTIFY_CLIENT_ID. Open setup wizard.');
@@ -423,9 +441,12 @@ export function getMissingScopes(requiredScopes = SCOPES) {
 export function getAuthState() {
   const tokens = loadTokens();
   const grantedScopes = normalizeScopes(tokens.scopes);
+  const authenticated = Boolean(tokens.accessToken && tokens.expiresAt > Date.now());
   return {
-    authenticated: Boolean(tokens.accessToken && tokens.expiresAt > Date.now()),
+    authenticated,
     hasRefreshToken: Boolean(tokens.refreshToken),
+    hasStoredSession: Boolean(tokens.accessToken || tokens.refreshToken),
+    canRefresh: Boolean(!authenticated && tokens.refreshToken),
     expiresAt: tokens.expiresAt || 0,
     grantedScopes,
     missingScopes: SCOPES.filter((scope) => !grantedScopes.includes(scope)),
@@ -434,6 +455,7 @@ export function getAuthState() {
 
 export function logout() {
   localStorage.removeItem(TOKEN_KEY);
+  clearPkceTransaction();
 }
 
 // --------------- PKCE Crypto ---------------
@@ -618,6 +640,9 @@ async function refreshAccessToken() {
       body: text,
       durationMs: Math.round(nowMs() - startedAt),
     });
+    if (response.status === 400 && /invalid_grant|invalid[_ ]refresh|refresh token/i.test(text)) {
+      localStorage.removeItem(TOKEN_KEY);
+    }
     throw new Error(`Token refresh failed: ${response.status} ${text}`);
   }
 

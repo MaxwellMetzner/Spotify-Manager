@@ -1484,24 +1484,23 @@ function renderAuthState() {
   const loginBtn = get('loginBtn');
   const logoutBtn = get('logoutBtn');
   const isConfigured = Boolean(state.setup?.hasClientId);
-  const canLogin = isConfigured && !auth?.authenticated;
-  const authStatusText = auth?.authenticated
-    ? 'Connected to Spotify'
-    : isConfigured
-      ? 'Not signed in'
-      : 'Configure Spotify app details to sign in';
-  setStatusBubble('authStatus', authStatusText, { tone: auth?.authenticated ? 'success' : 'info' });
-  loginBtn.disabled = !canLogin;
-  logoutBtn.disabled = !auth?.authenticated;
+  const isSignedIn = Boolean(auth?.authenticated);
+  const canLogin = isConfigured && !isSignedIn;
+  const displayName = state.user?.display_name || state.user?.id || '';
+  const authStatusText = isSignedIn
+    ? `Connected${displayName ? ` as ${displayName}` : ''}`
+    : auth?.hasStoredSession
+      ? 'Session expired. Reconnect to Spotify.'
+      : isConfigured
+        ? 'Spotify app configured. Connect your account.'
+        : 'Spotify app setup required.';
 
-  if (auth?.authenticated) {
-    const label = state.user?.display_name || state.user?.id || 'Signed In';
-    loginBtn.textContent = label;
-    loginBtn.classList.remove('btn-primary');
-  } else {
-    loginBtn.textContent = 'Sign In With Spotify';
-    loginBtn.classList.add('btn-primary');
-  }
+  setStatusBubble('authStatus', authStatusText, { tone: isSignedIn ? 'success' : 'info' });
+  loginBtn.disabled = !canLogin;
+  logoutBtn.disabled = !isSignedIn;
+  loginBtn.classList.toggle('hidden', isSignedIn);
+  logoutBtn.classList.toggle('hidden', !isSignedIn);
+  loginBtn.textContent = auth?.hasStoredSession ? 'Reconnect Spotify' : 'Connect Spotify';
 }
 
 function renderSetupState() {
@@ -1509,11 +1508,18 @@ function renderSetupState() {
   if (!setup) return;
   const setupBtn = get('openSetupWizardBtn');
   const recommendedRedirect = auth.getHostedRedirectUriForSetup();
+  const setupStatus = get('setupStatus');
   setStatusBubble(
     'setupStatus',
-    setup.hasClientId ? `Configured Client ID: ${setup.clientIdMasked}` : 'Spotify app setup required.',
+    setup.hasClientId ? 'Spotify app configured.' : 'Spotify app setup required.',
     { tone: setup.hasClientId ? 'info' : 'error' }
   );
+  if (setupStatus) {
+    setupStatus.title = setup.hasClientId && setup.clientIdMasked
+      ? `Saved Client ID: ${setup.clientIdMasked}`
+      : '';
+  }
+  setupBtn.textContent = setup.hasClientId ? 'Spotify App Settings' : 'Setup Spotify App';
   setupBtn.classList.remove('hidden');
   get('setupRedirectUri').value = setup.redirectUri || recommendedRedirect;
 
@@ -1646,6 +1652,21 @@ function redoLastOperation() {
 }
 
 function openSetupModal() {
+  const saved = auth.getSavedSetupConfig();
+  const clientInput = get('setupClientId');
+  if (clientInput) {
+    clientInput.value = '';
+    clientInput.placeholder = saved.hasClientId
+      ? `Saved Client ID will be kept (${saved.clientIdMasked})`
+      : 'Paste Client ID';
+    clientInput.title = saved.hasClientId
+      ? `Leave blank to keep saved Client ID ${saved.clientIdMasked}`
+      : '';
+  }
+  const redirectInput = get('setupRedirectUri');
+  if (redirectInput) {
+    redirectInput.value = state.setup?.redirectUri || saved.redirectUri || auth.getHostedRedirectUriForSetup();
+  }
   get('setupModal').classList.remove('hidden');
 }
 
@@ -2110,27 +2131,33 @@ async function refreshSetupState() {
 }
 
 async function testAndSaveSetupWizard() {
-  const clientId = get('setupClientId').value.trim();
+  const saved = auth.getSavedSetupConfig();
+  const enteredClientId = get('setupClientId').value.trim();
+  const clientId = enteredClientId || saved.clientId;
   const redirectUri = get('setupRedirectUri').value.trim();
   const testResult = auth.testSetupConfig({ clientId, redirectUri });
   auth.saveSetup({ clientId, redirectUri: testResult.redirectUri });
+  get('setupClientId').value = '';
+  get('setupClientId').placeholder = `Saved Client ID will be kept (${testResult.clientIdMasked})`;
+  get('setupClientId').title = `Leave blank to keep saved Client ID ${testResult.clientIdMasked}`;
   get('setupRedirectUri').value = testResult.redirectUri;
-  setSetupMessage('Config test passed and settings saved. You can now sign in.');
+  setSetupMessage(enteredClientId
+    ? 'Config saved. You can now connect Spotify.'
+    : 'Config saved with the existing Client ID.'
+  );
   await refreshSetupState();
 }
 
 async function refreshAuthAndUser() {
   // Try to restore session from refresh token if access token is expired.
-  await auth.tryAutoRefresh();
+  const restoredSession = await auth.tryAutoRefresh();
   state.auth = auth.getAuthState();
-  dlog('refreshAuthAndUser', state.auth);
+  dlog('refreshAuthAndUser', { ...state.auth, restoredSession });
 
   if (state.auth.authenticated) {
     state.user = await auth.loadCurrentUser();
-    get('userLabel').textContent = `${state.user.display_name || state.user.id}`;
   } else {
     state.user = null;
-    get('userLabel').textContent = '';
   }
 
   renderAuthState();

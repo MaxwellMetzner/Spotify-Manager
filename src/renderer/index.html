@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link
@@ -27,15 +27,14 @@
 
         <div class="auth-block">
           <div class="auth-actions">
-            <button id="loginBtn" class="btn btn-primary" disabled>Sign In With Spotify</button>
-            <button id="logoutBtn" class="btn btn-ghost" disabled>Sign Out</button>
-            <button id="openSetupWizardBtn" class="btn btn-small">Setup Spotify Config</button>
+            <button id="loginBtn" class="btn btn-primary" disabled>Connect Spotify</button>
+            <button id="logoutBtn" class="btn btn-ghost hidden" disabled>Sign Out</button>
+            <button id="openSetupWizardBtn" class="btn btn-small">Spotify App Settings</button>
           </div>
           <div class="auth-summary">
             <div id="setupStatus" class="status"></div>
             <div id="authStatus" class="status">Disconnected</div>
           </div>
-          <div id="userLabel" class="subtle auth-user-label"></div>
         </div>
 
         <div class="playlist-block">
@@ -127,8 +126,8 @@
             <div class="ribbon-panel active" data-panel="home">
               <div class="ribbon-group wide">
                 <h4>Workflow</h4>
-                <p class="subtle">Use the table headers to sort or filter by the currently visible column. Export always uses the current visible order, so the playlist preview on screen is the playlist you create.</p>
-                <p class="subtle">Mix and Analyze panels now stay focused on ordering, transition review, outlier checks, and duplicate cleanup without bulk copy actions.</p>
+                <p class="subtle">For full track metadata, import an Exportify .csv using Import CSV under Playlists. Spotify API changes made direct metadata lookup obsolete, but the imported CSV still powers sorting, filtering, Mix, and Analyze workflows.</p>
+                <p class="subtle">Export creates a new Spotify playlist from the current visible order, so the table preview on screen is the playlist you save.</p>
               </div>
             </div>
 
@@ -197,7 +196,7 @@
           <h3 id="setupTitle">Spotify Setup Wizard</h3>
           <button id="closeSetupModalBtn" class="btn btn-small">Close</button>
         </div>
-        <p class="subtle">Create a Spotify app, copy the Client ID, and save it here for browser sign-in.</p>
+        <p class="subtle">Create a Spotify app, copy the Client ID, and save it here for browser sign-in. A saved Client ID can be left blank when updating settings.</p>
         <ol class="setup-steps">
           <li>
             Open
@@ -217,7 +216,7 @@
             </ul>
           </li>
           <li>Click <strong>Save</strong>, open the new app, and copy its <strong>Client ID</strong>.</li>
-          <li>Paste the Client ID below, leave the redirect URI exactly as shown, then click <strong>Test &amp; Save</strong>.</li>
+          <li>Paste the Client ID below, leave the redirect URI exactly as shown, then click <strong>Test &amp; Save</strong>. If the app is already configured, leave Client ID blank to keep it.</li>
         </ol>
         <div class="filter-grid">
           <label>SPOTIFY_CLIENT_ID <input id="setupClientId" type="text" placeholder="Paste Client ID" /></label>
