@@ -154,6 +154,22 @@ pre,
   margin-bottom: 0;
 }
 
+.brand-credit {
+  font-size: 0.83rem;
+  margin-top: 4px;
+}
+
+.brand-credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.brand-credit a:hover,
+.brand-credit a:focus-visible {
+  color: var(--text);
+}
+
 .auth-block,
 .playlist-block,
 .hero-card,
