@@ -31,6 +31,24 @@ Spotify Manager is a static browser app for advanced Spotify playlist editing an
 - Undo and redo action history.
 - Transition diagnostics for adjacent tracks in the current order.
 
+## Table View
+
+The table view is the main workspace for playlist cleanup, sorting, filtering, and metadata inspection.
+
+![Table view screenshot](screenshots/table-view.jpg)
+
+## Mixing View
+
+The mixing workflow helps sequence tracks with configurable weighting so transitions feel more intentional.
+
+![Mixing view screenshot](screenshots/mixing-view.jpg)
+
+## Analysis View
+
+The analysis panel highlights outliers, genre rarity, and transition diagnostics so you can spot weak points in a playlist quickly.
+
+![Analysis view screenshot](screenshots/analysis-view.jpg)
+
 ## Metadata expectations
 
 - Spotify developer access is required to authenticate and create or export playlists.
