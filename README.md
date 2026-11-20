@@ -1,63 +1,52 @@
 # Spotify Manager
 
-Spotify Manager is a static browser app for advanced Spotify playlist editing and analysis. It is designed to run on GitHub Pages or any other static host without an application server.
+Spotify Manager is a static playlist editor for GitHub Pages. Open a playlist from Spotify or import an Exportify CSV directly in the browser.
 
-## Hosting Model
+## Open a playlist
 
-- No backend server is required.
-- Spotify OAuth runs directly in the browser with Authorization Code + PKCE.
-- Setup values, tokens, and granted scopes are stored in browser storage.
-- The app can run from GitHub Pages, Netlify, Cloudflare Pages, or a local static server.
+**Spotify library.** Choose **Connect Spotify** to open the setup guide. Create a Spotify app with Web API access, register the redirect URI shown in settings, save its Client ID, and sign in. Search your library or use the menu beside a playlist to assign it to a local folder. Folder assignments are saved in this browser for the connected account. Spotify’s Web API does not expose the folder hierarchy from its apps. [Spotify playlist folders](https://developer.spotify.com/documentation/web-api/concepts/playlists#folders)
 
-## What it does
+**Exportify CSV.** Choose **Import CSV** to open Exportify, export an individual playlist, and drop its CSV into the importer. A CSV can open on its own while signed out. With a Spotify playlist already open, the importer can match recordings by Spotify URI and add their metadata while preserving edits, repeated entries, and working order. It reports the match count and leaves unmatched tracks in place. [Exportify](https://exportify.net/) · [Export format](https://github.com/pavelkomarov/exportify#export-format)
 
-- First-run setup wizard walks through Spotify app creation and stores your Client ID locally in the browser.
-- Sign in with Spotify using OAuth Authorization Code + PKCE.
-- Browse your playlist library.
-- Load playlist tracks with expanded metadata, including:
-  - Track details: title, artists, album, explicit, popularity, duration, added at.
-  - Audio feature details: tempo/BPM, key, mode, danceability, energy, valence, loudness, acousticness, instrumentalness, speechiness, liveness, time signature.
-  - Local workflow fields: custom order index and CSV-provided genre tags.
-- Sort directly in-table by clicking column headers.
-- Right-click headers for quick filters; active filters are shown as chips.
-- Resize and reorder columns in the table.
-- Select rows and remove songs from the working playlist view.
-- Deduplicate exact duplicates and review near duplicates.
-- Shuffle tracks one or more passes.
-- Mix Assist ordering with configurable weights in `config/mix-weights.json`.
-- Genre sequencing for CSV-backed workflows.
-- Outlier detection with explainable scoring based on audio profile and genre rarity.
-- Filter tracks by metadata and create a new playlist from filtered results.
-- Undo and redo action history.
-- Transition diagnostics for adjacent tracks in the current order.
+| Available data | What you can do |
+| --- | --- |
+| Spotify playlist and track details | Search, sort, filter, reorder, remove tracks, review duplicates, and save a new private playlist. |
+| Tempo, key, loudness, and other audio measurements | Use Mix Assist, inspect adjacent transitions, and compare tracks with their playlist median. Exportify supplies these fields when available. |
+| Genre tags | Filter by genre or sequence within each primary genre. |
 
-## Table View
+## Tracklist
 
-The table view is the main workspace for playlist cleanup, sorting, filtering, and metadata inspection.
+The grid renders a window of rows and columns. Search across titles, artists, and albums. Click a header to sort, or use its filter icon or context menu to include or exclude values. Duration filters accept minutes and seconds such as `3:45` or a number of seconds. Added times appear in the browser’s local time zone and sort chronologically.
 
-![Table view screenshot](screenshots/table-view.jpg)
+Drag and resize headers, pick visible columns, or use **Actions** to shuffle, restore the original tracklist, and remove selected occurrences. Undo and redo work on the current playlist. **Save to Spotify** previews a new private playlist in visible table order, including active filters. If sign-in is needed, the app keeps the open work in this tab through the OAuth round trip.
 
-## Mixing View
+![Tracklist with an enriched playlist and a local library folder](screenshots/table-view.jpg)
 
-The mixing workflow helps sequence tracks with configurable weighting so transitions feel more intentional.
+## Mix Assist
 
-![Mixing view screenshot](screenshots/mixing-view.jpg)
+| Mode | BPM weight | Other priorities |
+| --- | ---: | --- |
+| Beatmatch | 68% | Key and loudness, with small weights for texture. |
+| Harmonic blend | 48% | Compatible keys on the circle of fifths. |
+| Acoustic flow | 42% | Acousticness, instrumentalness, speechiness, and loudness. |
 
-## Analysis View
+Open **Adjust weights** to customize a mode or save a preset in the browser. The adjusted slider keeps its percentage and the others share the remainder. The total stays at 100%. Artist spacing has a separate, adjustable penalty. The initial Beatmatch weights can be configured in `config/mix-weights.json`.
 
-The analysis panel highlights outliers, genre rarity, and transition diagnostics so you can spot weak points in a playlist quickly.
+Sequencing runs in a worker, starting from the visible track order. Filters keep hidden entries in their existing positions. Tracks without comparable weighted measurements keep their slots. Transition cards show a quality label, BPM change, and any half-time or double-time match. Expand a card’s tempo line for the pair fit, key compatibility, genre overlap, artist adjustment, and coverage. Sparse pairs are labeled **Limited data**.
 
-![Analysis view screenshot](screenshots/analysis-view.jpg)
+![Mix settings and adjacent transition details](screenshots/mixing-view.jpg)
 
-## Metadata expectations
+## Analyzer
 
-- Spotify developer access is required to authenticate and create or export playlists.
-- Spotify API responses may not include every metadata field for every track.
-- For richer metadata workflows, export a playlist CSV from `https://exportify.net/` and import it into the app.
+**Outliers** scans features measured on at least six tracks. It compares values with the playlist median using robust spread estimates and a minimum meaningful difference per feature. A strong difference in tempo, loudness, or texture can trigger a flag on its own. Smaller differences need corroboration from a second feature. Genre rarity adds context to an existing flag. Each result includes the track’s measurements and the playlist medians.
 
-## Spotify API scopes
+**Duplicates** groups repeated and closely related recordings by title and artist. Review suggested keeps and checked occurrences before applying a removal. Scans use the entire working playlist. Results are paged inside scrollable panels.
 
-The app uses these Spotify Web API scopes:
+![Outlier explanations and duplicate review](screenshots/analysis-view.jpg)
+
+## Hosting and authentication
+
+OAuth uses Authorization Code with PKCE. The app stores its Client ID and tokens in browser storage. Spotify authentication requests these scopes.
 
 - `playlist-read-private`
 - `playlist-read-collaborative`
@@ -65,60 +54,36 @@ The app uses these Spotify Web API scopes:
 - `playlist-modify-public`
 - `user-read-private`
 
-## Local preview
-
-Run a local static server:
+### Local preview
 
 ```powershell
 npm start
 ```
 
-This serves the repo at `http://127.0.0.1:3000/`.
+Open `http://127.0.0.1:3000/`. For local Spotify sign-in, register the exact redirect URI shown in Spotify settings.
 
-## GitHub Pages deployment
+### GitHub Pages
 
-This repo includes a GitHub Actions workflow that publishes the repository directly to GitHub Pages.
-
-1. Push the repository to GitHub.
-1. Open `Settings` -> `Pages` in the GitHub repo.
-1. Set `Source` to `GitHub Actions`.
-1. Push to `main`, or run the `Deploy GitHub Pages` workflow manually.
-1. Wait for the deployment to finish.
-1. Open the site at `https://<your-user>.github.io/<your-repo>/`.
-1. In Spotify Developer Dashboard, add this exact redirect URI:
+1. In the repository’s **Settings → Pages**, set **Source** to **GitHub Actions**.
+2. Push to `main` or run **Deploy GitHub Pages** manually.
+3. Open `https://<your-user>.github.io/<your-repo>/` and register the callback below in the Spotify Developer Dashboard.
+4. Open Spotify settings in the app, paste your Client ID, and connect.
 
 ```text
 https://<your-user>.github.io/<your-repo>/api/auth/spotify/callback
 ```
 
-1. Open the deployed site.
-1. Click `Setup Spotify Config`.
-1. Paste your Spotify Client ID and save.
+For another static host, serve `index.html`, `src/`, `config/`, and `api/auth/spotify/callback/` under the same base path. The application ships Tabulator 6.3.1 and its MIT license in `src/vendor/tabulator/`.
 
-## Manual static deployment
-
-If you want to deploy without GitHub Actions, publish the repository as a static site and keep these paths intact:
-
-- `index.html`
-- `src/renderer/`
-- `api/auth/spotify/callback/`
-- `config/`
-
-## Testing
-
-Run the test suite with Node:
+### Tests
 
 ```powershell
 npm test
 ```
 
-## Deployment notes
+<details>
+<summary>Workspace artwork</summary>
 
-- GitHub Pages serves project sites under a path prefix like `/Spotify-Manager/`; the app now resolves redirect and callback URLs relative to that prefix.
-- Tabulator is loaded from jsDelivr CDN so `node_modules` does not need to be deployed.
-- The callback route is a real static page at `api/auth/spotify/callback/index.html`, so Spotify can redirect directly back into the app.
+The opening image was generated with the built-in ImageGen tool and saved as `src/renderer/assets/record-sleeve.webp`. The generation prompt was “Editorial product photograph for a playlist editor. Top-down close crop of a black vinyl record slipping out of an unprinted acid-lime paper sleeve on a deep forest-green tabletop, arranged diagonally. Raking studio light catches the fine concentric grooves. A plain pale green center label and spindle hole. Graphic, tactile, restrained. Landscape composition, no text, logos or people.”
 
-## Notes
-
-- Spotify may return null for some audio fields on certain tracks.
-- Export creates a new playlist in Spotify using the current visible table order.
+</details>

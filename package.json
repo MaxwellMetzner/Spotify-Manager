@@ -5,7 +5,7 @@
   "description": "Static Spotify playlist manager for GitHub Pages and other static hosts",
   "scripts": {
     "start": "npx serve . -l 3000",
-    "test": "node --test Agents/test-analysis.mjs Agents/test-auth.mjs Agents/test-spotifyApi.mjs Agents/test-tableView.mjs"
+    "test": "node --test"
   },
   "keywords": [
     "spotify",

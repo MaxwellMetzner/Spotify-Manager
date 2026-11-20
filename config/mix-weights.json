@@ -1,13 +1,13 @@
 {
-  "bpm": 0.26,
-  "harmonic": 0.22,
-  "energy": 0.14,
-  "danceability": 0.07,
-  "valence": 0.04,
-  "loudness": 0.08,
-  "instrumentalness": 0.03,
-  "acousticness": 0.02,
-  "speechiness": 0.02,
-  "liveness": 0.01,
-  "genre": 0.1
+  "bpm": 0.68,
+  "harmonic": 0.10,
+  "loudness": 0.06,
+  "instrumentalness": 0.05,
+  "acousticness": 0.04,
+  "speechiness": 0.04,
+  "energy": 0.02,
+  "danceability": 0.01,
+  "valence": 0,
+  "liveness": 0,
+  "genre": 0
 }

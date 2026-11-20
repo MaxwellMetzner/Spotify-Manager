@@ -1,309 +1,120 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spotify Manager</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css"
-    />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="background-glow"></div>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <h1>Spotify Manager</h1>
-          <p>Advanced playlist workflows</p>
-          <p class="brand-credit">
-            Built by
-            <a href="https://maxwellmetzner.github.io/" target="_blank" rel="noopener noreferrer">Maxwell Metzner</a>
-          </p>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#182420">
+  <title>Spotify Manager</title>
+  <link rel="stylesheet" href="../vendor/tabulator/tabulator.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" aria-label="Library and navigation" id="sidebar">
+    <header class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><strong>Spotify Manager</strong>
+      <button class="mobile-only rail-close" data-action="library" aria-label="Close library">×</button>
+    </header>
+    <nav class="workspace-nav" aria-label="Workspace">
+      <button id="tabHome" data-view="tracks" aria-current="page"><i class="icon tracks-icon" aria-hidden="true"></i>Tracklist</button>
+      <button id="tabMix" data-view="mix"><i class="icon mix-icon" aria-hidden="true"></i>Mix Assist</button>
+      <button id="tabAnalyze" data-view="analyze"><i class="icon analyze-icon" aria-hidden="true"></i>Analyzer</button>
+    </nav>
+    <section class="library-block">
+      <div class="section-title"><h2>Your library</h2><button id="refreshPlaylistsBtn" class="rail-icon" title="Refresh playlists" aria-label="Refresh playlists" disabled>↻</button></div>
+      <label class="search-box rail-search"><i class="search-icon" aria-hidden="true"></i><input id="playlistSearch" type="search" aria-label="Find a playlist" placeholder="Find a playlist"></label>
+      <div id="playlistList" class="playlist-list"></div>
+    </section>
+    <footer class="rail-footer">
+      <div><span id="connectionDot" class="connection-dot"></span><span id="authStatus">Disconnected</span></div>
+      <button class="rail-icon settings-button" id="openSetupWizardBtn" title="Spotify settings" aria-label="Spotify settings">⚙</button>
+    </footer>
+  </aside>
+  <button class="rail-backdrop" data-action="library" aria-label="Close library"></button>
+  <main class="workspace">
+    <header class="topbar">
+      <div class="breadcrumb"><button class="mobile-only mobile-menu" data-action="library" aria-label="Open library" aria-controls="sidebar" aria-expanded="false">☰</button><span>Workspace</span><b aria-hidden="true">/</b><strong id="viewName">Tracklist</strong></div>
+      <button class="btn" id="importCsvBtn" data-action="import"><span aria-hidden="true">↥</span> Import CSV</button>
+    </header>
+    <div class="workspace-body">
+      <header id="playlistHeader" class="playlist-header" hidden>
+        <div class="playlist-heading"><span id="sourceLabel" class="eyebrow"></span><h1 id="playlistTitle"></h1><p id="playlistMeta"></p></div>
+        <div class="header-actions"><button id="undoBtn" class="btn icon-btn" aria-label="Undo" title="Undo (Ctrl+Z)">↶</button><button id="redoBtn" class="btn icon-btn" aria-label="Redo" title="Redo (Ctrl+Y)">↷</button><button class="btn btn-primary" id="exportBtn">Save to Spotify <span aria-hidden="true">↗</span></button></div>
+      </header>
+
+      <section id="welcome" class="welcome" aria-labelledby="welcomeTitle">
+        <div class="welcome-banner"><div class="welcome-copy"><span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><h1 id="welcomeTitle">Playlist<br>workspace</h1><p>Edit your tracklist, shape transitions, and find tracks that stand apart.</p></div><img src="assets/record-sleeve.webp" width="1050" height="700" alt="" fetchpriority="high"></div>
+        <h2 class="source-heading">Open a playlist</h2>
+        <div class="source-grid">
+          <article class="source-card"><i class="source-icon disc-icon" aria-hidden="true"></i><h3>Spotify library</h3><p>Browse your playlists, edit track order, and save a new playlist to Spotify.</p><button id="welcomeSpotify" data-action="connect" class="btn btn-primary">Connect Spotify <span aria-hidden="true">→</span></button></article>
+          <article class="source-card"><i class="source-icon file-icon" aria-hidden="true"></i><h3>Exportify CSV</h3><p>Import tempo, key, and audio features for Mix Assist and outlier detection. Works signed out.</p><button data-action="import" class="btn">Import a CSV <span aria-hidden="true">→</span></button></article>
         </div>
+      </section>
 
-        <div class="auth-block">
-          <div class="auth-actions">
-            <button id="loginBtn" class="btn btn-primary" disabled>Connect Spotify</button>
-            <button id="logoutBtn" class="btn btn-ghost hidden" disabled>Sign Out</button>
-            <button id="openSetupWizardBtn" class="btn btn-small">Spotify App Settings</button>
-          </div>
-          <div class="auth-summary">
-            <div id="setupStatus" class="status"></div>
-            <div id="authStatus" class="status">Disconnected</div>
-          </div>
+      <section id="tracksView" class="track-panel panel" aria-label="Tracklist" hidden>
+        <div id="trackNotice" class="data-notice" hidden><div><strong>Audio features</strong><span id="trackNoticeText"></span></div><button class="text-btn" data-action="import">Import CSV ↗</button></div>
+        <div class="table-toolbar">
+          <label class="search-box track-search"><i class="search-icon" aria-hidden="true"></i><input type="search" id="trackSearch" placeholder="Search tracks, artists, albums" aria-label="Search tracks, artists, albums"></label>
+          <div class="inline"><button id="openColumnsBtn" class="btn small">Columns</button><details class="tools-menu"><summary class="btn small">Actions ▾</summary><div class="menu-items"><button id="shuffleBtn">Shuffle tracks</button><button id="resetOrderBtn">Reset to original tracklist</button><button id="removeSelectedBtn" disabled>Remove selected</button><button id="reloadPlaylistBtn">Reload from Spotify</button></div></details></div>
         </div>
+        <div id="activeFilterPills" class="filter-pills" hidden></div>
+        <div id="tracksTableWrap" class="table-wrap"><div id="tracksTable" aria-label="Playlist tracks"></div></div>
+        <footer class="table-footer"><span id="filterCount"></span><span id="selectionCount">Click a header to sort or filter</span></footer>
+      </section>
 
-        <div class="playlist-block">
-          <div class="row-between">
-            <h2>Playlists</h2>
-            <div class="inline-controls">
-              <button id="importCsvBtn" class="btn btn-small">Import CSV</button>
-              <button id="refreshPlaylistsBtn" class="btn btn-small">Refresh</button>
-            </div>
+      <section id="mixView" class="tool-view" aria-label="Mix Assist" hidden>
+        <div class="tool-heading"><div><h2>Mix Assist</h2><p>Sequence the visible tracks from the first row in your tracklist.</p></div></div>
+        <div class="audio-gate" id="mixGate"></div>
+        <div id="mixTools" class="mix-tools" hidden>
+          <div class="panel mix-controls"><div class="section-title"><h3>Mix settings</h3><span id="mixCoverage" class="small-meta"></span></div>
+            <label class="field">Mix mode<select id="mixModeSelect"><option value="club-beat-driven">Beatmatch</option><option value="smooth-harmonic">Harmonic blend</option><option value="acoustic-flow">Acoustic flow</option></select></label>
+            <p class="mode-hint" id="modeHint"></p>
+            <div class="weight-overview"><div id="weightBar" class="weight-bar" aria-hidden="true"></div><div id="weightLegend" class="weight-legend" aria-label="Mix weight distribution"></div></div>
+            <div class="inline"><button id="mixAssistBtn" class="btn btn-primary">Apply order</button><button id="genreSequenceBtn" class="btn">Group by genre</button></div>
+            <details class="tuning"><summary>Adjust weights <span id="mixWeightTotal">100%</span></summary>
+              <p class="subtle">Changing one weight redistributes the remaining percentage across the other factors.</p><div id="mixWeightSliders" class="sliders"></div>
+              <label class="check-line"><input id="artistAvoidanceEnabled" type="checkbox" checked> Space repeated artists</label>
+              <label class="slider-row" for="artistAvoidanceStrength"><span>Repeat penalty</span><input id="artistAvoidanceStrength" type="range" min="0" max="100" value="35"><output id="artistAvoidanceStrengthValue">35%</output></label>
+              <div class="presets"><label class="field">Save these weights<span class="inline"><input id="weightPresetName" placeholder="Preset name"><button id="saveWeightPresetBtn" class="btn small">Save</button></span></label><label class="field">Saved presets<select id="weightPresetSelect"></select></label><div class="inline"><button id="loadWeightPresetBtn" class="btn small">Load</button><button id="deleteWeightPresetBtn" class="btn small">Delete</button></div></div>
+            </details>
           </div>
-          <ul id="playlistList" class="playlist-list"></ul>
+          <section class="panel report"><div class="section-title"><h3>Transitions</h3><span id="transitionCount" class="small-meta"></span></div><div id="transitionResults" class="results"></div><div id="transitionPager" class="pager"></div></section>
         </div>
-      </aside>
+      </section>
 
-      <main class="main-panel">
-        <section class="hero-card">
-          <div>
-            <h2 id="playlistTitle">Select a playlist</h2>
-            <p id="playlistMeta" class="subtle">Choose a playlist on the left to load songs and metadata.</p>
-          </div>
-          <div class="hero-actions">
-            <button id="reloadPlaylistBtn" class="btn btn-small">Reload</button>
-            <button id="undoBtn" class="btn btn-small">Undo</button>
-            <button id="redoBtn" class="btn btn-small">Redo</button>
-            <button id="exportBtn" class="btn btn-primary">Export</button>
-          </div>
-        </section>
-
-        <section class="table-card">
-          <div id="messages" class="status"></div>
-          <div class="inline-controls table-tools">
-            <button id="openColumnsBtn" class="btn btn-small">Columns</button>
-            <button id="removeSelectedBtn" class="btn btn-small">Remove Selected</button>
-            <button id="resetOrderBtn" class="btn btn-small">Reset To Original Order</button>
-            <button id="shuffleBtn" class="btn btn-small">Shuffle</button>
-            <span id="filterCount" class="status toolbar-status">Filtered tracks: 0</span>
-            <div class="inline-controls debug-tools">
-              <button id="toggleDebugBtn" class="btn btn-small">Debug Off</button>
-              <button id="toggleDebugPanelBtn" class="btn btn-small">Debug Log</button>
-              <button id="copyDebugLogBtn" class="btn btn-small hidden">Copy</button>
-              <button id="clearDebugLogBtn" class="btn btn-small hidden">Clear</button>
-            </div>
-          </div>
-          <div id="activeFilterPills" class="filter-pills"></div>
-
-          <div id="debugPanel" class="debug-panel hidden">
-            <div class="row-between debug-panel-header">
-              <div>
-                <strong>Debug Log</strong>
-                <div id="debugLogSummary" class="subtle">0 entries</div>
-              </div>
-            </div>
-            <pre id="debugLogOutput" class="debug-log-output">Debug log is empty.</pre>
-          </div>
-
-          <div class="table-filter-strip hidden">
-            <label>Title <input id="filterTitle" type="text" placeholder="title" /></label>
-            <label>Artist <input id="filterArtist" type="text" placeholder="artist" /></label>
-            <label>Duration (ms) <input id="filterDurationMsMin" type="number" step="1" placeholder="min" /><input id="filterDurationMsMax" type="number" step="1" placeholder="max" /></label>
-            <label>BPM <input id="filterBpmMin" type="number" step="0.1" placeholder="min" /><input id="filterBpmMax" type="number" step="0.1" placeholder="max" /></label>
-            <label>Tempo <input id="filterTempoMin" type="number" step="0.1" placeholder="min" /><input id="filterTempoMax" type="number" step="0.1" placeholder="max" /></label>
-            <label>Energy <input id="filterEnergyMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterEnergyMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Danceability <input id="filterDanceMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterDanceMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Valence <input id="filterValenceMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterValenceMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Loudness <input id="filterLoudnessMin" type="number" step="0.1" placeholder="min" /><input id="filterLoudnessMax" type="number" step="0.1" placeholder="max" /></label>
-            <label>Acousticness <input id="filterAcousticMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterAcousticMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Instrumentalness <input id="filterInstrMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterInstrMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Speechiness <input id="filterSpeechMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterSpeechMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Liveness <input id="filterLiveMin" type="number" step="0.01" min="0" max="1" placeholder="min" /><input id="filterLiveMax" type="number" step="0.01" min="0" max="1" placeholder="max" /></label>
-            <label>Key/Mode <input id="filterKeyMode" type="text" placeholder="major/minor" /></label>
-            <label>Time Sig <input id="filterTimeSig" type="number" placeholder="4" /></label>
-            <label>Popularity <input id="filterPopularityMin" type="number" min="0" max="100" placeholder="min" /><input id="filterPopularityMax" type="number" min="0" max="100" placeholder="max" /></label>
-            <label>Genres <input id="filterGenre" type="text" placeholder="house" /></label>
-          </div>
-
-          <div id="tracksTableWrap" class="table-wrap">
-            <div id="tracksTable"></div>
-          </div>
-        </section>
-
-        <section class="ribbon">
-          <div class="ribbon-tabs">
-            <button id="tabHome" class="ribbon-tab active" data-tab="home">Home</button>
-            <button id="tabMix" class="ribbon-tab" data-tab="mix">Mix</button>
-            <button id="tabAnalyze" class="ribbon-tab" data-tab="analyze">Analyze</button>
-          </div>
-
-          <div class="ribbon-panels">
-            <div class="ribbon-panel active" data-panel="home">
-              <div class="ribbon-group wide">
-                <h4>Workflow</h4>
-                <p class="subtle">For full track metadata, import an Exportify .csv using Import CSV under Playlists. Spotify API changes made direct metadata lookup obsolete, but the imported CSV still powers sorting, filtering, Mix, and Analyze workflows.</p>
-                <p class="subtle">Export creates a new Spotify playlist from the current visible order, so the table preview on screen is the playlist you save.</p>
-              </div>
-            </div>
-
-            <div class="ribbon-panel" data-panel="mix">
-              <div class="ribbon-group wide">
-                <h4>Mix Assist</h4>
-                <div class="inline-controls">
-                  <label for="mixModeSelect">Mode</label>
-                  <select id="mixModeSelect">
-                    <option value="smooth-harmonic">Smooth Harmonic</option>
-                    <option value="club-beat-driven">Club &amp; Beat Driven</option>
-                    <option value="quick-transition">Quick Transition</option>
-                    <option value="generic">Generic</option>
-                  </select>
-                  <button id="mixAssistBtn" class="btn btn-small">Apply Mix Assist</button>
-                  <button id="genreSequenceBtn" class="btn btn-small">Genre Sequence</button>
-                </div>
-                <p class="subtle">Left sliders tune blend priorities. If total exceeds 100%, values are auto-normalized. Genre Sequence groups by dominant genre first, then applies mix order inside each group. Transition Diagnostics scores adjacent pairs in the current order.</p>
-                <div id="mixWeightSliders" class="mix-slider-grid"></div>
-                <div id="mixWeightTotal" class="status"></div>
-                <div class="inline-controls presets-row">
-                  <input id="weightPresetName" type="text" placeholder="Weight preset name" />
-                  <button id="saveWeightPresetBtn" class="btn btn-small">Save</button>
-                  <label for="weightPresetSelect" class="visually-hidden">Weight Preset</label>
-                  <select id="weightPresetSelect" title="Weight Preset"></select>
-                  <button id="loadWeightPresetBtn" class="btn btn-small">Load</button>
-                  <button id="deleteWeightPresetBtn" class="btn btn-small">Delete</button>
-                </div>
-              </div>
-              <div class="ribbon-group wide transition-group">
-                <h4>Transition Details</h4>
-                <div class="inline-controls">
-                  <button id="refreshTransitionsBtn" class="btn btn-small">Refresh</button>
-                </div>
-                <div id="transitionResults" class="results compact-results"></div>
-              </div>
-            </div>
-
-            <div class="ribbon-panel" data-panel="analyze">
-              <div class="ribbon-group">
-                <h4>Deduplication</h4>
-                <div class="inline-controls">
-                  <button id="analyzeDuplicatesBtn" class="btn btn-small">Analyze</button>
-                  <button id="applyDedupeSelectionsBtn" class="btn btn-small">Remove Checked</button>
-                </div>
-                <div id="dedupeResults" class="results compact-results"></div>
-              </div>
-              <div class="ribbon-group">
-                <h4>Outliers</h4>
-                <div class="inline-controls">
-                  <button id="outliersBtn" class="btn btn-small">Detect</button>
-                </div>
-                <div id="outliersResult" class="results compact-results"></div>
-              </div>
-            </div>
-
-          </div>
-        </section>
-
-      </main>
+      <section id="analyzeView" class="tool-view" aria-label="Analyzer" hidden>
+        <div class="tool-heading"><div><h2>Analyzer</h2><p>Review unusual tracks and duplicate recordings across the working playlist.</p></div></div>
+        <div id="analysisGate" class="audio-gate"></div>
+        <div class="analysis-tools" id="analysisTools" hidden>
+          <section class="panel report"><div class="section-title"><h3>Outliers</h3><button id="outliersBtn" class="btn small">Scan outliers</button></div><p class="subtle">Compares measured features with the playlist median.</p><div id="outliersResult" class="results"></div><div id="outlierPager" class="pager"></div></section>
+          <section class="panel report"><div class="section-title"><h3>Duplicates</h3><button id="analyzeDuplicatesBtn" class="btn small">Scan duplicates</button></div><p class="subtle">Review exact and possible matches before removing tracks.</p><div id="dedupeResults" class="results"></div><div id="duplicatePager" class="pager"></div><button id="applyDedupeSelectionsBtn" class="btn small" hidden>Remove checked</button></section>
+        </div>
+      </section>
     </div>
+    <footer class="workspace-footer"><span id="messages" role="status" aria-live="polite"></span><a href="https://maxwellmetzner.github.io/" target="_blank" rel="noopener noreferrer">Maxwell Metzner ↗</a></footer>
+  </main>
+</div>
 
-    <div id="setupModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
-      <div class="modal">
-        <div class="row-between">
-          <h3 id="setupTitle">Spotify Setup Wizard</h3>
-          <button id="closeSetupModalBtn" class="btn btn-small">Close</button>
-        </div>
-        <p class="subtle">Create a Spotify app, copy the Client ID, and save it here for browser sign-in. A saved Client ID can be left blank when updating settings.</p>
-        <ol class="setup-steps">
-          <li>
-            Open
-            <a class="setup-link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Spotify Developer Dashboard</a>.
-            Click <strong>Create app</strong>.
-          </li>
-          <li>
-            In the Spotify form, only these fields matter:
-            <ul>
-              <li><strong>App name</strong>: <code class="copy-value" data-copy="Spotify Manager" title="Click to copy">Spotify Manager</code> (or any name you prefer)</li>
-              <li><strong>App description</strong>: <code class="copy-value" data-copy="Advanced Spotify playlist management web app" title="Click to copy">Advanced Spotify playlist management web app</code></li>
-              <li>
-                <strong>Redirect URIs</strong>: click <strong>Add</strong> and paste this exact callback URI:
-                <code id="setupRedirectHintInline" class="copy-value" title="Click to copy">https://maxwellmetzner.github.io/Spotify-Manager/api/auth/spotify/callback</code>
-              </li>
-              <li><strong>Which API/SDKs are you planning to use?</strong>: <strong>Check the Web API checkbox</strong></li>
-            </ul>
-          </li>
-          <li>Click <strong>Save</strong>, open the new app, and copy its <strong>Client ID</strong>.</li>
-          <li>Paste the Client ID below, leave the redirect URI exactly as shown, then click <strong>Test &amp; Save</strong>. If the app is already configured, leave Client ID blank to keep it.</li>
-        </ol>
-        <div class="filter-grid">
-          <label>SPOTIFY_CLIENT_ID <input id="setupClientId" type="text" placeholder="Paste Client ID" /></label>
-          <label>SPOTIFY_REDIRECT_URI <input id="setupRedirectUri" type="text" value="https://maxwellmetzner.github.io/Spotify-Manager/api/auth/spotify/callback" /></label>
-        </div>
-        <div class="inline-controls">
-          <button id="createEnvBtn" class="btn btn-primary">Test &amp; Save</button>
-        </div>
-        <div id="setupModalStatus" class="status"></div>
-      </div>
-    </div>
-
-    <div id="headerFilterPopup" class="header-filter-popup hidden" role="dialog" aria-modal="false">
-      <div id="headerFilterTitle" class="subtle">Set filter</div>
-      <label class="popup-toggle"><input id="headerFilterNot" type="checkbox" /> Exclude matches (NOT)</label>
-      <label class="popup-field" id="headerFilterMinRow"><span>Min</span><input id="headerFilterMin" type="text" /></label>
-      <label class="popup-field" id="headerFilterMaxRow"><span>Max</span><input id="headerFilterMax" type="text" /></label>
-      <div id="headerFilterSetRow" class="popup-set-row hidden"></div>
-      <div class="inline-controls">
-        <button id="headerFilterApplyBtn" class="btn btn-small">Apply</button>
-        <button id="headerFilterClearBtn" class="btn btn-small">Clear</button>
-        <button id="headerFilterCancelBtn" class="btn btn-small">Cancel</button>
-      </div>
-    </div>
-
-    <div id="csvImportModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="csvImportTitle">
-      <div class="modal">
-        <div class="row-between">
-          <h3 id="csvImportTitle">Import CSV (Exportify)</h3>
-          <button id="closeCsvImportModalBtn" class="btn btn-small">Close</button>
-        </div>
-        <p class="subtle">Download your playlist CSV from Exportify and import it here.</p>
-        <p><a class="setup-link" href="https://exportify.net/" target="_blank" rel="noopener noreferrer">Open exportify.net</a></p>
-        <div id="csvDropzone" class="csv-dropzone" tabindex="0">
-          <strong>Drop CSV file here</strong>
-          <span>or click to browse</span>
-            <label for="csvFileInput" class="hidden">CSV File</label>
-            <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden" />
-        </div>
-        <div id="csvImportStatus" class="status"></div>
-      </div>
-    </div>
-
-    <div id="busyOverlay" class="loading-overlay hidden" role="status" aria-live="polite" aria-atomic="true">
-      <div class="loading-card">
-        <div class="loading-spinner" aria-hidden="true"></div>
-        <strong id="busyOverlayTitle">Working...</strong>
-        <div id="busyOverlayStatus" class="subtle">Please wait.</div>
-      </div>
-    </div>
-
-    <div id="columnPickerModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="columnPickerTitle">
-      <div class="modal">
-        <div class="row-between">
-          <h3 id="columnPickerTitle">Columns</h3>
-          <button id="closeColumnPickerModalBtn" class="btn btn-small">Close</button>
-        </div>
-        <div class="inline-controls">
-          <button id="selectAllColumnsBtn" class="btn btn-small">Select All</button>
-          <button id="deselectAllColumnsBtn" class="btn btn-small">Deselect All</button>
-        </div>
-        <div id="columnControls" class="column-controls"></div>
-      </div>
-    </div>
-
-    <div id="exportReviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="exportReviewTitle">
-      <div class="modal">
-        <div class="row-between">
-          <h3 id="exportReviewTitle">Review Export</h3>
-          <button id="closeExportReviewModalBtn" class="btn btn-small">Close</button>
-        </div>
-        <p id="exportReviewSummary" class="subtle"></p>
-        <label>New Playlist Name <input id="exportPlaylistName" type="text" placeholder="Playlist name" /></label>
-        <div id="exportNameError" class="status"></div>
-        <div class="inline-controls">
-          <button id="confirmExportBtn" class="btn btn-primary">Create Playlist</button>
-          <button id="cancelExportBtn" class="btn btn-small">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="../shared/analysis.js"></script>
-    <script type="module" src="app.js"></script>
-  </body>
+<dialog id="csvImportModal" aria-labelledby="csvImportTitle"><div class="dialog-heading"><h2 id="csvImportTitle">Import an Exportify CSV</h2><button class="close" data-close aria-label="Close">×</button></div>
+  <p>In Exportify, choose <strong>Get Started</strong>, sign in, and export an individual playlist. Bring the downloaded CSV here for Mix Assist and audio analysis.</p>
+  <div class="import-links"><a href="https://exportify.net/" class="btn" target="_blank" rel="noopener noreferrer">Open Exportify ↗</a><button id="copyPlaylistName" class="text-btn" hidden>Copy playlist name</button></div>
+  <label class="field" id="importModeField" hidden>Import destination<select id="importMode"><option value="enrich">Add details to this playlist</option><option value="new">Open as a separate playlist</option></select></label><p id="importContext" class="subtle"></p>
+  <button id="csvDropzone" class="dropzone"><span aria-hidden="true">↥</span><strong>Drop your CSV here</strong><span>or choose a file</span></button>
+  <input type="file" id="csvFileInput" accept=".csv,text/csv" hidden><p id="csvImportStatus" class="dialog-status" role="status"></p>
+</dialog>
+<dialog id="setupModal" aria-labelledby="setupTitle"><div class="dialog-heading"><h2 id="setupTitle">Spotify settings</h2><button class="close" data-close aria-label="Close">×</button></div>
+  <p>Connect your own Spotify app to browse playlists and save your edits.</p>
+  <details id="setupGuide" class="setup-guide"><summary>Set up a Spotify app</summary><ol><li>Open the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Spotify Developer Dashboard ↗</a> and create an app. Give it a name and description, then select <strong>Web API</strong>.</li><li>Add this redirect URI to the app and save it.<button class="copy-uri" id="setupRedirectHintInline" title="Copy redirect URI"></button></li><li>Copy the app’s Client ID and paste it below.</li></ol></details>
+  <label class="field">Client ID<input id="setupClientId" autocomplete="off" placeholder="Paste your Spotify Client ID"></label><label class="field">Redirect URI<input id="setupRedirectUri" type="url"></label>
+  <div class="inline"><button class="btn" id="createEnvBtn">Save settings</button><button class="btn btn-primary" id="loginBtn">Connect Spotify</button><button class="btn" id="logoutBtn" hidden>Sign out</button></div><p id="setupModalStatus" class="dialog-status" role="status"></p>
+  <details id="debugPanel" class="setup-guide"><summary>Debug log</summary><div class="inline"><button class="btn small" id="toggleDebugBtn">Debug off</button><button class="btn small" id="copyDebugLogBtn">Copy</button><button class="btn small" id="clearDebugLogBtn">Clear</button></div><pre id="debugLogOutput"></pre></details>
+</dialog>
+<dialog id="columnPickerModal" aria-labelledby="columnPickerTitle"><div class="dialog-heading"><h2 id="columnPickerTitle">Table columns</h2><button class="close" data-close aria-label="Close">×</button></div><div class="inline"><button class="btn small" id="selectAllColumnsBtn">Select all</button><button class="btn small" id="defaultColumnsBtn">Restore defaults</button><button class="btn small" id="deselectAllColumnsBtn">Clear</button></div><div id="columnControls" class="column-controls"></div><button class="btn btn-primary" id="applyColumnsBtn">Apply columns</button></dialog>
+<dialog id="headerFilterPopup" aria-labelledby="headerFilterTitle"><div class="dialog-heading"><h2 id="headerFilterTitle">Filter column</h2><button class="close" data-close aria-label="Close">×</button></div><form id="filterForm"><div id="filterFields"></div><label class="check-line"><input id="headerFilterNot" type="checkbox"> Exclude matches</label><p id="filterError" class="dialog-status" role="status"></p><div class="inline"><button class="btn btn-primary">Apply filter</button><button type="button" class="btn" id="headerFilterClearBtn">Clear filter</button></div></form></dialog>
+<dialog id="folderDialog" aria-labelledby="folderTitle"><div class="dialog-heading"><h2 id="folderTitle">Organize playlist</h2><button class="close" data-close aria-label="Close">×</button></div><p id="folderPlaylist"></p><p class="subtle">Spotify’s Web API omits playlist folders. These folders are saved in this browser for your account.</p><form id="folderForm"><label class="field">Folder<select id="folderSelect"></select></label><label class="field" id="newFolderField" hidden>New folder name<input id="folderName" maxlength="80"></label><button class="btn btn-primary">Save folder</button></form></dialog>
+<dialog id="exportReviewModal" aria-labelledby="exportReviewTitle"><div class="dialog-heading"><h2 id="exportReviewTitle">Save a new playlist</h2><button class="close" data-close aria-label="Close">×</button></div><p id="exportReviewSummary"></p><form id="exportForm"><label class="field">Playlist name<input id="exportPlaylistName" required></label><p class="dialog-status" id="exportNameError" role="status"></p><button class="btn btn-primary" id="confirmExportBtn">Create private playlist</button></form></dialog>
+<dialog id="busyOverlay" class="busy" aria-labelledby="busyOverlayTitle"><span class="spinner" aria-hidden="true"></span><h2 id="busyOverlayTitle">Working…</h2><p id="busyOverlayStatus"></p></dialog>
+<script defer src="../vendor/tabulator/tabulator.min.js"></script>
+<script defer src="../shared/analysis.js"></script>
+<script type="module" src="app.js"></script>
+</body>
 </html>
