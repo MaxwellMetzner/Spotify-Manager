@@ -77,7 +77,10 @@
               <div class="presets"><label class="field">Save these weights<span class="inline"><input id="weightPresetName" placeholder="Preset name"><button id="saveWeightPresetBtn" class="btn small">Save</button></span></label><label class="field">Saved presets<select id="weightPresetSelect"></select></label><div class="inline"><button id="loadWeightPresetBtn" class="btn small">Load</button><button id="deleteWeightPresetBtn" class="btn small">Delete</button></div></div>
             </details>
           </div>
-          <section class="panel report"><div class="section-title"><h3>Transitions</h3><span id="transitionCount" class="small-meta"></span></div><div id="transitionResults" class="results"></div><div id="transitionPager" class="pager"></div></section>
+          <section class="panel report">
+            <div class="section-title"><h3 id="transitionTitle">Transitions</h3><span id="transitionCount" class="small-meta"></span></div>
+            <div id="transitionResults" class="results" role="list" aria-labelledby="transitionTitle" tabindex="0"></div>
+          </section>
         </div>
       </section>
 
@@ -110,7 +113,6 @@
 </dialog>
 <dialog id="columnPickerModal" aria-labelledby="columnPickerTitle"><div class="dialog-heading"><h2 id="columnPickerTitle">Table columns</h2><button class="close" data-close aria-label="Close">×</button></div><div class="inline"><button class="btn small" id="selectAllColumnsBtn">Select all</button><button class="btn small" id="defaultColumnsBtn">Restore defaults</button><button class="btn small" id="deselectAllColumnsBtn">Clear</button></div><div id="columnControls" class="column-controls"></div><button class="btn btn-primary" id="applyColumnsBtn">Apply columns</button></dialog>
 <dialog id="headerFilterPopup" aria-labelledby="headerFilterTitle"><div class="dialog-heading"><h2 id="headerFilterTitle">Filter column</h2><button class="close" data-close aria-label="Close">×</button></div><form id="filterForm"><div id="filterFields"></div><label class="check-line"><input id="headerFilterNot" type="checkbox"> Exclude matches</label><p id="filterError" class="dialog-status" role="status"></p><div class="inline"><button class="btn btn-primary">Apply filter</button><button type="button" class="btn" id="headerFilterClearBtn">Clear filter</button></div></form></dialog>
-<dialog id="folderDialog" aria-labelledby="folderTitle"><div class="dialog-heading"><h2 id="folderTitle">Organize playlist</h2><button class="close" data-close aria-label="Close">×</button></div><p id="folderPlaylist"></p><p class="subtle">Spotify’s Web API omits playlist folders. These folders are saved in this browser for your account.</p><form id="folderForm"><label class="field">Folder<select id="folderSelect"></select></label><label class="field" id="newFolderField" hidden>New folder name<input id="folderName" maxlength="80"></label><button class="btn btn-primary">Save folder</button></form></dialog>
 <dialog id="exportReviewModal" aria-labelledby="exportReviewTitle"><div class="dialog-heading"><h2 id="exportReviewTitle">Save a new playlist</h2><button class="close" data-close aria-label="Close">×</button></div><p id="exportReviewSummary"></p><form id="exportForm"><label class="field">Playlist name<input id="exportPlaylistName" required></label><p class="dialog-status" id="exportNameError" role="status"></p><button class="btn btn-primary" id="confirmExportBtn">Create private playlist</button></form></dialog>
 <dialog id="busyOverlay" class="busy" aria-labelledby="busyOverlayTitle"><span class="spinner" aria-hidden="true"></span><h2 id="busyOverlayTitle">Working…</h2><p id="busyOverlayStatus"></p></dialog>
 <script defer src="../vendor/tabulator/tabulator.min.js"></script>

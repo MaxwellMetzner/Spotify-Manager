@@ -1,4 +1,5 @@
 import { $, escapeHtml as html, notify, readObject } from './ui.js';
+import { createTransitionList } from './transitionList.js';
 
 const analysis = globalThis.PlaylistAnalysis;
 const labels = { bpm: 'Tempo (BPM)', harmonic: 'Musical key', loudness: 'Loudness', instrumentalness: 'Instrumentalness',
@@ -28,7 +29,8 @@ function gate(id, title, text) {
 export function bindAnalysisPanels({ visibleTracks, workingTracks, hasPlaylist, removeRows, sequence, initialWeights }) {
   const mode = $('mixModeSelect'), sliders = $('mixWeightSliders');
   const presets = readObject(presetKey);
-  let weights, gesture, transitionPage = 0, outlierPage = 0, duplicatePage = 0;
+  const transitions = createTransitionList($('transitionResults'), analysis.computeTransitionDiagnostics);
+  let weights, gesture, mixCoverage = null, outlierPage = 0, duplicatePage = 0;
   let availableFactors = {}, mixRows = [], outliers = null, duplicateEntries = null, marked = new Set();
 
   sliders.innerHTML = Object.entries(labels).map(([key, label]) =>
@@ -116,36 +118,20 @@ export function bindAnalysisPanels({ visibleTracks, workingTracks, hasPlaylist, 
   $('genreSequenceBtn').onclick = () => sequence('genre', options());
 
   function renderTransitions() {
-    if ($('mixView').hidden || $('mixTools').hidden) return;
-    const n = Math.max(0, mixRows.length - 1);
-    transitionPage = Math.min(transitionPage, Math.max(0, Math.ceil(n / pageSize) - 1));
-    const rows = analysis.computeTransitionDiagnostics(mixRows, options(), transitionPage * pageSize, pageSize);
-    const grades = { smooth: 'Smooth', moderate: 'Moderate', rough: 'Abrupt', limited: 'Limited data' };
-    $('transitionCount').textContent = n.toLocaleString() + ' pairs';
-    $('transitionResults').innerHTML = rows.map((row) => {
-      const delta = row.bpmDelta;
-      const details = [delta === null ? 'Tempo unavailable' : (delta > 0 ? '+' : '') + Number(delta.toFixed(1)) + ' BPM'];
-      if (row.halfTime) details.push('Half/double-time match');
-      if (row.artistSpacingBonus < 0) details.push('Recent artist repeat');
-      if (row.quality === 'limited') details.push('Partial measurements');
-      const percent = (value) => value === null ? 'Unavailable' : Math.round(value * 100) + '%';
-      const breakdown = [
-        ['Pair fit', percent(row.transitionScore)], ['Key compatibility', percent(row.harmonicScore)],
-        ['Genre overlap', percent(row.genreScore)], ['Artist adjustment', Math.round(row.artistSpacingBonus * 100) + ' points'],
-        ['Comparable weight', percent(row.coverage)],
-      ].map(([label, value]) => '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>').join('');
-      return `<div class="diagnostic transition ${row.quality}"><span class="transition-index">${row.index + 1}</span><div><strong>${html(row.fromTitle || 'Untitled')} → ${html(row.toTitle || 'Untitled')}</strong><details class="pair-details"><summary>${details.join(' · ')}</summary><dl>${breakdown}</dl></details></div><span class="quality">${grades[row.quality]}${row.quality === 'limited' ? '' : '<br>' + Math.round(row.score * 100) + '/100'}</span></div>`;
-    }).join('') || '<p class="empty-result">Two visible tracks are needed for a transition.</p>';
-    paginate('transitionPager', n, transitionPage, (p) => { transitionPage = p; renderTransitions(); });
+    transitions.setOptions(options());
   }
 
   function showMix() {
-    mixRows = visibleTracks();
-    transitionPage = 0;
-    const { audio, tempo, genres } = analysis.getAudioCoverage(mixRows);
+    const next = visibleTracks();
+    const changed = !mixCoverage || next.length !== mixRows.length || next.some((track, i) => track !== mixRows[i]);
+    if (changed) {
+      mixRows = next;
+      mixCoverage = analysis.getAudioCoverage(mixRows);
+      availableFactors = analysis.comparableFactors(mixRows);
+    }
+    const { audio, tempo, genres } = mixCoverage;
     const usable = audio >= 2 || genres >= 2;
     $('mixTools').hidden = !usable;
-    availableFactors = analysis.comparableFactors(mixRows);
     showWeights(weights);
     $('genreSequenceBtn').disabled = genres < 2;
     $('genreSequenceBtn').title = genres < 2 ? 'Requires genre tags on at least two visible tracks' : 'Sequence within each primary genre';
@@ -155,7 +141,9 @@ export function bindAnalysisPanels({ visibleTracks, workingTracks, hasPlaylist, 
       gate('mixGate', 'Add audio features for Mix Assist', 'Import an Exportify CSV with tempo or other audio features on at least two tracks to compare transitions.');
     } else gate('mixGate', '', '');
     $('mixCoverage').textContent = tempo + ' / ' + mixRows.length + ' with BPM';
-    renderTransitions();
+    const pairs = Math.max(0, mixRows.length - 1);
+    $('transitionCount').textContent = pairs.toLocaleString() + (pairs === 1 ? ' pair' : ' pairs');
+    if (changed) transitions.setTracks(usable ? mixRows : [], options());
   }
 
   function renderOutliers() {
@@ -225,7 +213,9 @@ export function bindAnalysisPanels({ visibleTracks, workingTracks, hasPlaylist, 
     invalidate(refreshOpenReports = false) {
       const rescanDuplicates = refreshOpenReports && duplicateEntries !== null;
       outliers = refreshOpenReports && outliers ? analysis.analyzeOutliers(workingTracks()) : null;
-      duplicateEntries = null; marked.clear(); mixRows = []; outlierPage = duplicatePage = transitionPage = 0;
+      duplicateEntries = null; marked.clear(); outlierPage = duplicatePage = 0;
+      mixRows = []; mixCoverage = null;
+      transitions.setTracks([], null);
       if (rescanDuplicates) scanDuplicates();
     },
   };

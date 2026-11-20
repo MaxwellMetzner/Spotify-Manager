@@ -60,17 +60,13 @@ button, input, select { -webkit-tap-highlight-color: transparent; }
 .rail-search input::placeholder { color: #adbcb0; }
 .playlist-list { overflow: auto; min-height: 0; scrollbar-color: #546857 transparent; }
 .library-empty { color: #acbbae; font-size: 13px; margin: 6px 5px; }
-.playlist-row { display: flex; align-items: center; gap: 2px; }
-.playlist-row > button:first-child { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; text-align: left; }
+.playlist-row { width: 100%; display: flex; align-items: center; gap: 9px; text-align: left; }
 .playlist-list button { color: inherit; border: 0; background: transparent; border-radius: 6px; padding: 7px 5px; }
-.playlist-row [aria-current=true] { background: #344738; color: #e0f5b9; }
+.playlist-row[aria-current=true] { background: #344738; color: #e0f5b9; }
 .playlist-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .playlist-count { margin-left: auto; font: 11px var(--mono); opacity: .7; }
-.playlist-thumb { width: 25px; height: 25px; flex: none; border-radius: 4px; object-fit: cover; }
+.playlist-thumb { width: 32px; height: 32px; flex: none; border-radius: 4px; object-fit: contain; }
 .thumb-fallback { display: grid; place-items: center; background: #3b4d40; }
-.folder-group { margin: 3px 0; }
-.folder-group summary { padding: 6px 3px; color: #deebd8; font-size: 13px; overflow-wrap: anywhere; }
-.folder-group .playlist-row { margin-left: 8px; }
 .rail-footer { border-top: 1px solid #35433a; padding: 11px 3px 0; font-size: 12px; }
 .rail-footer > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #authStatus { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -196,7 +192,8 @@ button, input, select { -webkit-tap-highlight-color: transparent; }
 .diagnostic strong { overflow-wrap: anywhere; font-size: 13px; }
 .diagnostic p, .diagnostic li { font-size: 12px; color: #4c5a50; }
 .diagnostic ul { margin: 6px 0; padding-left: 17px; }
-.transition { display: grid; grid-template-columns: 24px 1fr auto; align-items: start; gap: 7px; border-left: 3px solid var(--tone); background: var(--tint); }
+.transition-block { display: flow-root; height: calc(var(--pairs) * var(--pair-height, 66px)); }
+.transition { display: grid; grid-template-columns: 4ch minmax(0,1fr) auto; align-items: start; gap: 7px; border-left: 3px solid var(--tone); background: var(--tint); }
 .smooth { --tone: #4b864c; --tint: #f1f7ed; }
 .moderate { --tone: #a4802c; --tint: #fcf8eb; }
 .rough { --tone: #b6644b; --tint: #fcf2ed; }

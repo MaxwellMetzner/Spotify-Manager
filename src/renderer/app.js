@@ -23,7 +23,9 @@ const workingTracks = () => state.order.map((id) => state.tracks[id]);
 function visibleTracks() {
   if (!state.meta || !table) return [];
   controls?.flush();
-  return table.getData('active');
+  // The mix and export views only read the active rows. Use their underlying
+  // records so opening a view does not deep-copy every track and its metadata.
+  return table.getRows('active').map((row) => row.getData());
 }
 
 function mobileLibrary(open) {
