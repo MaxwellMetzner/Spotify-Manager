@@ -80,6 +80,21 @@ test('transitions use available weighted evidence, display coverage, and recogni
   assert.deepEqual(analysis.computeTransitionDiagnostics(rows, {}, 1, 1), [empty]);
 });
 
+test('scoring a transition window retains artist history and includes the final pair', () => {
+  const tracks = Array.from({ length: 51 }, (_, i) => ({
+    title: 'Track ' + i, artists: ['Artist ' + i], bpm: 120 + i % 5,
+  }));
+  tracks[25].artists = tracks[21].artists;
+
+  const full = analysis.computeTransitionDiagnostics(tracks);
+  const middle = analysis.computeTransitionDiagnostics(tracks, {}, 24, 24);
+  const tail = analysis.computeTransitionDiagnostics(tracks, {}, 48, 24);
+  assert.ok(middle[0].artistSpacingBonus < 0);
+  assert.deepEqual(middle, full.slice(24, 48));
+  assert.deepEqual(tail, full.slice(48));
+  assert.equal(tail.at(-1).toTitle, 'Track 50');
+});
+
 test('sequencing favors tempo, keeps unmeasured slots, and returns each occurrence exactly once at scale', () => {
   const small = [{ bpm: 120 }, { bpm: 150 }, {}, { bpm: 121 }];
   assert.deepEqual(analysis.optimizeMixOrder(small, {}), [small[0], small[3], small[2], small[1]]);

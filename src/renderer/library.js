@@ -10,15 +10,16 @@ export function bindLibrary({ load, showTracks }) {
     const image = playlist.imageUrl?.startsWith('https://')
       ? `<img class="playlist-thumb" src="${html(playlist.imageUrl)}" loading="lazy" decoding="async" alt="">`
       : fallbackCover;
-    const target = playlist.id ? `data-playlist="${html(playlist.id)}"` : 'data-active-csv';
+    const target = playlist.isCsv ? 'data-active-csv' : `data-playlist="${html(playlist.id)}"`;
+    const selected = playlist.isCsv || Boolean(playlist.id && playlist.id === current);
     const count = Number.isFinite(playlist.totalTracks) ? `<span class="playlist-count">${playlist.totalTracks}</span>` : '';
-    return `<button type="button" class="playlist-row" ${target} title="${html(playlist.name)}" aria-current="${!playlist.id || playlist.id === current}" ${playlist.canLoad === false ? 'disabled' : ''}>${image}<span class="playlist-name">${html(playlist.name)}</span>${count}</button>`;
+    return `<button type="button" class="playlist-row" ${target} title="${html(playlist.name)}" aria-current="${selected}" ${playlist.canLoad === false ? 'disabled' : ''}>${image}<span class="playlist-name">${html(playlist.name)}</span>${count}</button>`;
   }
 
   function render() {
     const query = $('playlistSearch').value.trim().toLowerCase();
     const rows = playlists.filter((p) => p.name.toLowerCase().includes(query)).map(playlistRow);
-    if (csvName && csvName.toLowerCase().includes(query)) rows.unshift(playlistRow({ name: csvName }));
+    if (csvName && csvName.toLowerCase().includes(query)) rows.unshift(playlistRow({ name: csvName, isCsv: true }));
     const empty = query ? 'No matching playlists.' : account ? 'No playlists in this library.' : 'Connect Spotify to browse your playlists.';
     list.innerHTML = rows.join('') || `<p class="library-empty">${empty}</p>`;
   }

@@ -6,6 +6,9 @@ import { createTrackTable, defaultColumns } from './tableView.js';
 import { bindTableControls } from './tableControls.js';
 import { bindAnalysisPanels } from './analysisPanels.js';
 import { bindLibrary } from './library.js';
+import { bindComparison } from './comparisonView.js';
+import { spotifyTrackUri } from '../shared/playlistComparison.js';
+import { bindSpotifySave } from './spotifySave.js';
 import { saveLoginDraft, restoreLoginDraft } from './loginDraft.js';
 import { $, notify, runWorker, showDialog, status } from './ui.js';
 
@@ -16,9 +19,9 @@ const state = {
   coverage: { audio: 0, tempo: 0, genres: 0 }, duration: 0, durationKnown: false,
   view: 'tracks', playlists: [], user: null, authenticated: false,
 };
-let table, tableReady, controls, panels, library, request = 0, revision = 0, libraryRequest = 0;
-let exportUris = [], exportBusy = false;
-const views = { tracks: 'Tracklist', mix: 'Mix Assist', analyze: 'Analyzer' };
+let table, tableReady, controls, panels, library, comparison, request = 0, revision = 0, libraryRequest = 0;
+let saver, setupExport = null;
+const views = { tracks: 'Tracklist', mix: 'Mix Assist', analyze: 'Analyzer', compare: 'Compare' };
 const workingTracks = () => state.order.map((id) => state.tracks[id]);
 function visibleTracks() {
   if (!state.meta || !table) return [];
@@ -45,10 +48,13 @@ function chooseView(view) {
     else tab.removeAttribute('aria-current');
   }
   $('welcome').hidden = !!state.meta || view !== 'tracks';
-  $('playlistHeader').hidden = !state.meta;
+  $('playlistHeader').hidden = !state.meta || view === 'compare';
+  $('importCsvBtn').hidden = view === 'compare';
   $('tracksView').hidden = view !== 'tracks' || !state.meta;
   $('mixView').hidden = view !== 'mix';
   $('analyzeView').hidden = view !== 'analyze';
+  $('compareView').hidden = view !== 'compare';
+  if (view === 'compare') comparison.show();
   if (view === 'mix') panels?.showMix();
   if (view === 'analyze') panels?.showAnalyzer();
   if (view === 'tracks' && state.meta && table?.initialized) table.redraw();
@@ -91,7 +97,7 @@ function updateHeader() {
     : 'Import an Exportify CSV for tempo, Mix Assist, and outlier detection.';
   $('undoBtn').disabled = !state.past.length;
   $('redoBtn').disabled = !state.future.length;
-  $('exportBtn').disabled = !state.order.length;
+  $('exportBtn').disabled = !state.tracks.length;
   $('reloadPlaylistBtn').hidden = !state.meta.id;
 }
 function measure(rows) {
@@ -239,6 +245,7 @@ async function loadPlaylists() {
   if (ticket !== libraryRequest) return;
   state.playlists = lists;
   library.setPlaylists(lists);
+  if (state.view === 'compare') comparison.show();
 }
 async function loadPlaylist(id) {
   const ticket = ++request;
@@ -273,6 +280,7 @@ function accountUI() {
   library.setAccount(state.authenticated ? state.user?.id || null : null);
 }
 function openSetup() {
+  setupExport = null;
   const setup = auth.getSetupState();
   $('setupClientId').value = '';
   $('setupClientId').placeholder = setup.hasClientId ? 'Saved · ' + setup.clientIdMasked : 'Paste your Spotify Client ID';
@@ -293,60 +301,71 @@ function saveSetup() {
   $('setupRedirectHintInline').textContent = validated.redirectUri;
   status('setupModalStatus', 'Settings saved. You can connect Spotify.');
 }
-async function connect(fromSettings = false) {
+async function connect(fromSettings = false, exportAfterLogin = null) {
   if (state.authenticated) {
     if (matchMedia('(max-width:800px)').matches) mobileLibrary(true);
     else $('playlistSearch').focus();
     return;
   }
   try {
-    if (fromSettings) saveSetup();
-    if (!auth.getSetupState().hasClientId) { openSetup(); return; }
-    if (state.meta) {
-      await saveLoginDraft({ meta: state.meta, source: state.source, tracks: state.tracks, order: state.order,
+    if (fromSettings) { exportAfterLogin = setupExport; saveSetup(); }
+    if (!auth.getSetupState().hasClientId) { openSetup(); setupExport = exportAfterLogin; return; }
+    const comparisonDraft = comparison.snapshot();
+    if (state.meta || state.view === 'compare' || comparisonDraft) {
+      const draft = state.meta ? { meta: state.meta, source: state.source, tracks: state.tracks, order: state.order,
         past: state.past, future: state.future, view: state.view, mixOptions: panels.options(),
         columnLayout: table.getColumns().map((column) => ({ field: column.getField(), width: column.getWidth(), visible: column.isVisible() })),
-        tableFilters: controls.snapshot(), sort: table.getSorters().map((s) => ({ column: s.field, dir: s.dir })) });
+        tableFilters: controls.snapshot(), sort: table.getSorters().map((s) => ({ column: s.field, dir: s.dir })) } : { view: state.view };
+      if (comparisonDraft) draft.comparison = comparisonDraft;
+      if (exportAfterLogin) draft.exportReview = exportAfterLogin;
+      await saveLoginDraft(draft);
     }
     notify('Connecting to Spotify…');
     await auth.beginLogin();
   } catch (error) {
     if (!$('setupModal').open) openSetup();
+    setupExport = exportAfterLogin;
     status('setupModalStatus', error.message, true);
   }
 }
 function reviewExport() {
   if (!state.meta) return;
-  if (!state.authenticated) { notify('Connect Spotify to save this playlist. Your work will reopen after sign-in.'); connect(); return; }
   const tracks = visibleTracks();
-  exportUris = tracks.map((track) => track.uri).filter((uri) => /^spotify:track:[a-zA-Z0-9]{22}$/.test(uri));
-  const skipped = tracks.length - exportUris.length;
-  $('exportReviewSummary').textContent = 'Create a private playlist with ' + exportUris.length + ' tracks in the visible table order.' +
-    (skipped ? ' Skipping ' + skipped + ' without a valid Spotify track URI.' : '');
-  $('exportPlaylistName').value = state.meta.name + ' - export';
-  validateExport();
-  showDialog('exportReviewModal');
+  const uris = tracks.map(spotifyTrackUri).filter(Boolean);
+  const skipped = tracks.length - uris.length;
+  const source = '“' + state.meta.name + '”';
+  const hidden = state.order.length - tracks.length;
+  const review = { uris, skipped, preferredId: state.meta.id, baseSnapshot: state.meta.snapshotId,
+    allowEmpty: !!state.tracks.length && !state.order.length, name: state.meta.name + ' - export',
+    sourceDescription: uris.length.toLocaleString() + (uris.length === 1 ? ' track from ' : ' tracks from ') + source + ' in displayed order.' +
+      (hidden ? ' Filters exclude ' + hidden.toLocaleString() + ' working entries.' : ''),
+    summary: 'Create a private playlist with ' + uris.length +
+    (uris.length === 1 ? ' track' : ' tracks') + ' in the visible table order.' +
+    (skipped ? ' Skipping ' + skipped + ' without a valid Spotify track URI.' : '') };
+  if (hidden) {
+    const all = workingTracks().map(spotifyTrackUri).filter(Boolean);
+    review.full = { uris: all, skipped: state.order.length - all.length,
+      sourceDescription: 'The whole working playlist from ' + source + ' in working order, including tracks hidden by filters.' };
+  }
+  openExportReview(review);
 }
-function validateExport() {
-  const name = $('exportPlaylistName').value.trim();
-  const exists = state.playlists.some((p) => p.name.trim().toLowerCase() === name.toLowerCase());
-  const error = !exportUris.length ? 'No visible tracks have valid Spotify URIs.' : !name ? 'Enter a playlist name.' : exists ? 'Choose a name that is not already in your library.' : '';
-  status('exportNameError', error, !!error);
-  $('confirmExportBtn').disabled = !!error || exportBusy;
-  return !error;
+function saveComparison(uris, name) {
+  if (!uris.length) return;
+  const selected = uris.length.toLocaleString() + (uris.length === 1 ? ' selected recording' : ' selected recordings') + ' in comparison order.';
+  openExportReview({ uris, name, sourceDescription: 'From Compare · ' + selected, summary: 'Create a private playlist with ' + selected });
 }
-async function exportPlaylist(event) {
-  event.preventDefault();
-  if (exportBusy || !validateExport()) return;
-  exportBusy = true; $('confirmExportBtn').disabled = true;
-  const uris = exportUris, name = $('exportPlaylistName').value.trim();
-  try {
-    const saved = await api.createPlaylistFromTracks({ name, description: 'Created with Spotify Manager', public: false, trackUris: uris });
-    state.playlists.unshift({ id: saved.id, name: saved.name || name, totalTracks: uris.length, canLoad: true });
-    library.setPlaylists(state.playlists);
-    $('exportReviewModal').close(); notify('Saved “' + name + '” to Spotify.');
-  } catch (error) { status('exportNameError', error.message, true); }
-  finally { exportBusy = false; $('confirmExportBtn').disabled = false; }
+function openExportReview(review) {
+  if (state.authenticated) saver.open(review);
+  else connect(false, review);
+}
+function updateLibraryPlaylist(playlist) {
+  // Discard an older library refresh if a save or live review has overtaken it.
+  libraryRequest++;
+  const index = state.playlists.findIndex((p) => p.id === playlist.id);
+  if (index < 0) state.playlists.unshift(playlist);
+  else state.playlists[index] = { ...state.playlists[index], ...playlist };
+  library.setPlaylists(state.playlists);
+  if (state.view === 'compare') comparison.show();
 }
 
 function debugControls() {
@@ -391,7 +410,9 @@ function bind() {
   $('loginBtn').onclick = () => connect(true);
   $('logoutBtn').onclick = () => {
     auth.logout(); request++; libraryRequest++; state.user = null; state.playlists = []; accountUI();
+    comparison.signOut(state.source === 'csv');
     if (state.source !== 'csv') closeDataset();
+    else if (state.view === 'compare') comparison.show();
     $('setupModal').close(); notify('Signed out.');
   };
   $('refreshPlaylistsBtn').onclick = () => loadPlaylists().then(() => notify('Library refreshed.'), (e) => notify(e.message, true));
@@ -408,10 +429,10 @@ function bind() {
   $('resetOrderBtn').onclick = () => { controls.restore(); applyOrder(state.tracks.map((t) => t.rowId), 'Restored the original tracklist.'); };
   $('removeSelectedBtn').onclick = () => removeRows(table.getSelectedData().map((t) => t.rowId));
   $('undoBtn').onclick = () => history(true); $('redoBtn').onclick = () => history(false);
-  $('exportBtn').onclick = reviewExport; $('exportForm').onsubmit = exportPlaylist; $('exportPlaylistName').oninput = validateExport;
+  $('exportBtn').onclick = reviewExport;
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && document.body.classList.contains('library-open')) { mobileLibrary(false); return; }
-    if (!state.meta || document.querySelector('dialog[open]') || event.target.closest('input,textarea,select,[contenteditable=true]')) return;
+    if (!state.meta || state.view === 'compare' || document.querySelector('dialog[open]') || event.target.closest('input,textarea,select,[contenteditable=true]')) return;
     const key = event.key.toLowerCase();
     if (key === 'delete' && state.view === 'tracks') { event.preventDefault(); $('removeSelectedBtn').click(); }
     if ((event.ctrlKey || event.metaKey) && (key === 'z' || key === 'y')) { event.preventDefault(); history(key === 'z' && !event.shiftKey); }
@@ -426,6 +447,10 @@ async function init() {
   } catch { /* The built-in Beatmatch weights are identical to the shipped configuration. */ }
   panels = bindAnalysisPanels({ visibleTracks, workingTracks, hasPlaylist: () => !!state.meta, removeRows, sequence, initialWeights });
   library = bindLibrary({ load: loadPlaylist, showTracks: () => chooseView('tracks') });
+  saver = bindSpotifySave({ context: () => ({ user: state.user, playlists: state.playlists }), updatePlaylist: updateLibraryPlaylist });
+  comparison = bindComparison({ context: () => ({ meta: state.meta, playlists: state.playlists, revision,
+    libraryRevision: libraryRequest, authenticated: state.authenticated }), workingTracks,
+    readSpotify: api.fetchComparisonTracks, save: saveComparison });
   bind(); debugControls(); chooseView('tracks'); accountUI();
   try {
     try { await auth.handleAuthCallback(); } catch (error) { notify(error.message, true); }
@@ -433,9 +458,21 @@ async function init() {
     if (auth.getAuthState().authenticated) state.user = await auth.loadCurrentUser();
     accountUI();
   } catch (error) { notify(error.message, true); }
-  try { await restoreLoginDraft((d) => installDataset(d.meta, d.tracks, d.source, d)); }
+  let restoreCompare = false, exportReview;
+  try {
+    await restoreLoginDraft(async (d) => {
+      restoreCompare = d.view === 'compare';
+      if (d.meta) await installDataset(d.meta, d.tracks, d.source, restoreCompare ? { ...d, view: 'tracks' } : d);
+      if (d.comparison) comparison.restore(d.comparison);
+      exportReview = d.exportReview;
+    });
+  }
   catch (error) { notify('Could not reopen the playlist after sign-in. ' + error.message, true); }
-  await loadPlaylists();
+  try { await loadPlaylists(); }
+  finally {
+    if (restoreCompare) chooseView('compare');
+    if (state.authenticated && exportReview?.uris) openExportReview(exportReview);
+  }
   log('ready', { authenticated: state.authenticated });
 }
 init().catch((error) => notify(error.message, true));

@@ -4,6 +4,8 @@
 
 import { getGrantedScopes, getMissingScopes, spotifyRequest } from './auth.js';
 import { createLogger, nowMs } from './debug.js';
+import { isSpotifyTrackUri } from './shared/playlistComparison.js';
+import { canOverwritePlaylist, describeReplacement, playlistSizeError } from './shared/playlistOverwrite.js';
 
 const dlog = createLogger('spotify-api');
 const ENDPOINT_AVAILABILITY_KEY = 'spotifyManager.endpointAvailability.v1';
@@ -212,6 +214,7 @@ export async function fetchCurrentUserPlaylists() {
       description: playlist.description || '',
       totalTracks: Number(playlist.items?.total ?? playlist.tracks?.total ?? playlist.total ?? 0) || 0,
       owner: playlist.owner?.display_name || playlist.owner?.id,
+      ownerId: playlist.owner?.id,
       collaborative: playlist.collaborative,
       isPublic: playlist.public,
       snapshotId: playlist.snapshot_id,
@@ -263,19 +266,32 @@ function normalizePlaylistItem(raw) {
   return { ...raw, track: candidate };
 }
 
+async function* playlistItemPages(playlistId, { isCurrent = () => true, fields, additionalTypes = 'track' } = {}) {
+  const limit = 50;
+  for (let offset = 0; isCurrent(); offset += limit) {
+    const path = `/playlists/${playlistId}/items`;
+    const query = { offset, limit, additional_types: additionalTypes };
+    let page;
+    try { page = await spotifyRequest('GET', path, { ...query, fields }); }
+    catch (error) {
+      if (!fields || !isSpotifyStatus(error, 400)) throw error;
+      // Request full items when the server rejects the field selection.
+      if (!isCurrent()) return;
+      fields = undefined;
+      page = await spotifyRequest('GET', path, query);
+    }
+    if (!isCurrent()) return;
+    yield page;
+    if (!page.next) return;
+  }
+}
+
 async function fetchPlaylistItems(playlistId, progressCb) {
   const startedAt = nowMs();
   dlog('fetchPlaylistItems:start', { playlistId });
   const all = [];
-  let offset = 0;
-  const limit = 50;
   let pageIndex = 0;
-
-  while (true) {
-    const page = await spotifyRequest('GET', `/playlists/${playlistId}/items`, {
-      offset, limit, additional_types: 'track',
-    });
-
+  for await (const page of playlistItemPages(playlistId)) {
     const normalized = (page.items || []).map(normalizePlaylistItem).filter(Boolean);
     all.push(...normalized);
     pageIndex += 1;
@@ -287,8 +303,6 @@ async function fetchPlaylistItems(playlistId, progressCb) {
         totalItems: page.total || null,
       });
     }
-    offset += limit;
-    if (!page.next) break;
   }
   dlog('fetchPlaylistItems:done', {
     playlistId,
@@ -296,6 +310,122 @@ async function fetchPlaylistItems(playlistId, progressCb) {
     durationMs: Math.round(nowMs() - startedAt),
   });
   return all;
+}
+
+export async function fetchComparisonTracks(playlistId, isCurrent) {
+  const rows = [];
+  const trackFields = 'type,id,uri,name,is_local,duration_ms,artists(name),album(name)';
+  const fields = `next,items(is_local,item(${trackFields}),track(${trackFields}))`;
+  for await (const page of playlistItemPages(playlistId, { isCurrent, fields })) {
+    for (const item of page.items || []) {
+      const track = normalizePlaylistItem(item)?.track;
+      // Preserve the source positions of local, unavailable, and non-track entries.
+      if (!track || item.is_local || track.is_local) { rows.push(null); continue; }
+      rows.push({ trackId: track.id, uri: track.uri, title: track.name, albumName: track.album?.name,
+        artists: (track.artists || []).map((artist) => artist.name).filter(Boolean), durationMs: track.duration_ms });
+    }
+  }
+  return rows;
+}
+
+async function overwriteHeader(id, userId) {
+  const data = await spotifyRequest('GET', `/playlists/${encodeURIComponent(id)}`, {
+    fields: 'id,name,snapshot_id,public,collaborative,owner(id,display_name)',
+  });
+  const target = { id: data.id, name: data.name, snapshotId: data.snapshot_id, ownerId: data.owner?.id,
+    owner: data.owner?.display_name || data.owner?.id, isPublic: data.public, collaborative: data.collaborative };
+  if (id !== target.id || !canOverwritePlaylist(target, userId)) throw new Error('Choose a playlist you own or can edit as a collaborator.');
+  if (!target.snapshotId) throw new Error('Spotify did not provide a playlist version. Reopen the review to try again.');
+  if (typeof target.isPublic === 'boolean') ensurePlaylistModifyScope(target.isPublic);
+  else if (!getGrantedScopes().some((scope) => scope === 'playlist-modify-private' || scope === 'playlist-modify-public')) {
+    throw new Error('Sign in again and grant Spotify permission to modify playlists.');
+  }
+  return target;
+}
+
+function checkPlaylistVersion(actual, expected) {
+  if (actual !== expected) {
+    const error = new Error('The playlist changed on Spotify. Review the current version before continuing.');
+    error.playlistChanged = true;
+    throw error;
+  }
+}
+
+function overwriteError(error) {
+  if (isSpotifyStatus(error, 403)) return 'Spotify denied edit access. Check your playlist permissions and the account signed in here.';
+  if (isSpotifyStatus(error, 404)) return 'Spotify could not find this playlist for the signed-in account.';
+  if (isSpotifyStatus(error, 429)) return 'Spotify is rate limiting requests. Try again after a short wait.';
+  return error.message || String(error);
+}
+
+export async function inspectPlaylistOverwrite(id, userId, { isCurrent = () => true, onProgress } = {}) {
+  if (!id || !userId) throw new Error('Sign in and choose a destination playlist.');
+  try {
+    const header = await overwriteHeader(id, userId);
+    const entries = [];
+    const detail = 'type,id,uri,name,artists(name),is_local,linked_from(uri)';
+    const fields = `next,total,items(is_local,added_at,added_by(id),item(${detail}),track(${detail}))`;
+    let total;
+    for await (const page of playlistItemPages(encodeURIComponent(id), { isCurrent, fields, additionalTypes: 'track,episode' })) {
+      if (!Array.isArray(page.items) || !Number.isInteger(page.total) || page.total < 0) {
+        throw new Error('Spotify returned an incomplete track list. Reopen the review to try again.');
+      }
+      total = page.total;
+      for (const row of page.items) {
+        const item = row?.item || row?.track;
+        const uri = item?.uri || (item?.type === 'track' && item.id ? 'spotify:track:' + item.id : null);
+        const kind = row?.is_local || item?.is_local ? 'local' : item?.type === 'episode' ? 'episode'
+          : item?.type === 'track' && isSpotifyTrackUri(uri) ? 'track' : 'unavailable';
+        entries.push({ uri, originalUri: item?.linked_from?.uri, title: item?.name,
+          artists: (item?.artists || []).map((artist) => artist.name).join('; '), kind,
+          addedAt: row?.added_at, addedBy: row?.added_by?.id });
+      }
+      onProgress?.(entries.length, total);
+    }
+    if (!isCurrent()) return null;
+    const current = await overwriteHeader(id, userId);
+    checkPlaylistVersion(current.snapshotId, header.snapshotId);
+    if (total !== entries.length) throw new Error('Spotify returned an incomplete track list. Reopen the review to try again.');
+    return isCurrent() ? { ...current, entries } : null;
+  } catch (error) { throw new Error(overwriteError(error)); }
+}
+
+export async function overwritePlaylistItems({ target, userId, uris, allowEmpty = false, onProgress }) {
+  if (!target?.snapshotId || !Array.isArray(target.entries) || !Array.isArray(uris) || !uris.every(isSpotifyTrackUri) || (!uris.length && !allowEmpty)) {
+    throw new Error('Review a valid track list before overwriting a playlist.');
+  }
+  const sizeError = playlistSizeError(uris.length);
+  if (sizeError) throw new Error(sizeError);
+  const { identical, appendFrom, move } = describeReplacement(target.entries, uris);
+  let offset = appendFrom ?? 0, snapshotId = target.snapshotId, replace = appendFrom === null;
+  let attempted = false, acknowledged = false;
+  try {
+    // A URI replacement has no atomic snapshot precondition. Check immediately before each batch.
+    let current = await overwriteHeader(target.id, userId);
+    checkPlaylistVersion(current.snapshotId, snapshotId);
+    if (identical) return current;
+    do {
+      const body = move ? { ...move, snapshot_id: snapshotId } : { uris: uris.slice(offset, offset + 100) };
+      attempted = true;
+      const result = await spotifyRequest(replace ? 'PUT' : 'POST', `/playlists/${encodeURIComponent(target.id)}/items`, {}, body);
+      if (!result?.snapshot_id) throw new Error('Spotify did not return a version for the submitted batch.');
+      offset = move ? uris.length : offset + body.uris.length;
+      acknowledged = true;
+      snapshotId = result.snapshot_id;
+      onProgress?.(offset, uris.length);
+      replace = false;
+      current = await overwriteHeader(target.id, userId);
+      checkPlaylistVersion(current.snapshotId, snapshotId);
+    } while (offset < uris.length);
+    return current;
+  } catch (error) {
+    let message = overwriteError(error);
+    if (acknowledged) message += ` Spotify last confirmed ${offset.toLocaleString()} of ${uris.length.toLocaleString()} entries.`;
+    if (attempted) message += ' Recheck the playlist to see what Spotify applied.';
+    const failure = new Error(message);
+    failure.playlistMayHaveChanged = attempted || error.playlistChanged === true;
+    throw failure;
+  }
 }
 
 // --------------- Audio Features ---------------
@@ -509,6 +639,8 @@ export async function fetchPlaylistWithMetadata(playlistId, progressCb) {
 }
 
 export async function createPlaylistFromTracks(payload) {
+  const sizeError = playlistSizeError(payload.trackUris?.length);
+  if (sizeError) throw new Error(sizeError);
   ensurePlaylistModifyScope(Boolean(payload.public));
   const currentUser = await spotifyRequest('GET', '/me');
 
@@ -562,7 +694,8 @@ async function addTracksChunkWithRetry(playlistId, uris, chunkIndex, totalChunks
         break;
       }
 
-      if (attemptIndex === 0 && isForbidden) {
+      // Replacing can recover the first write to a new playlist. Later chunks must append.
+      if (chunkIndex === 0 && attemptIndex === 0 && isForbidden) {
         await waitForPlaylistMutationReady(playlistId);
         try {
           await spotifyRequest('PUT', `/playlists/${playlistId}/items`, {}, { uris });

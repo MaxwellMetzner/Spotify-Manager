@@ -18,6 +18,7 @@
       <button id="tabHome" data-view="tracks" aria-current="page"><i class="icon tracks-icon" aria-hidden="true"></i>Tracklist</button>
       <button id="tabMix" data-view="mix"><i class="icon mix-icon" aria-hidden="true"></i>Mix Assist</button>
       <button id="tabAnalyze" data-view="analyze"><i class="icon analyze-icon" aria-hidden="true"></i>Analyzer</button>
+      <button id="tabCompare" data-view="compare"><i class="icon compare-icon" aria-hidden="true"></i>Compare</button>
     </nav>
     <section class="library-block">
       <div class="section-title"><h2>Your library</h2><button id="refreshPlaylistsBtn" class="rail-icon" title="Refresh playlists" aria-label="Refresh playlists" disabled>↻</button></div>
@@ -45,7 +46,7 @@
         <div class="welcome-banner"><div class="welcome-copy"><span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><h1 id="welcomeTitle">Playlist<br>workspace</h1><p>Edit your tracklist, shape transitions, and find tracks that stand apart.</p></div><img src="assets/record-sleeve.webp" width="1050" height="700" alt="" fetchpriority="high"></div>
         <h2 class="source-heading">Open a playlist</h2>
         <div class="source-grid">
-          <article class="source-card"><i class="source-icon disc-icon" aria-hidden="true"></i><h3>Spotify library</h3><p>Browse your playlists, edit track order, and save a new playlist to Spotify.</p><button id="welcomeSpotify" data-action="connect" class="btn btn-primary">Connect Spotify <span aria-hidden="true">→</span></button></article>
+          <article class="source-card"><i class="source-icon disc-icon" aria-hidden="true"></i><h3>Spotify library</h3><p>Browse your playlists, edit track order, and save changes to Spotify.</p><button id="welcomeSpotify" data-action="connect" class="btn btn-primary">Connect Spotify <span aria-hidden="true">→</span></button></article>
           <article class="source-card"><i class="source-icon file-icon" aria-hidden="true"></i><h3>Exportify CSV</h3><p>Import tempo, key, and audio features for Mix Assist and outlier detection. Works signed out.</p><button data-action="import" class="btn">Import a CSV <span aria-hidden="true">→</span></button></article>
         </div>
       </section>
@@ -92,6 +93,37 @@
           <section class="panel report"><div class="section-title"><h3>Duplicates</h3><button id="analyzeDuplicatesBtn" class="btn small">Scan duplicates</button></div><p class="subtle">Review exact and possible matches before removing tracks.</p><div id="dedupeResults" class="results"></div><div id="duplicatePager" class="pager"></div><button id="applyDedupeSelectionsBtn" class="btn small" hidden>Remove checked</button></section>
         </div>
       </section>
+      <section id="compareView" class="tool-view comparison" aria-labelledby="compareTitle" hidden>
+        <header class="compare-heading"><div><h1 id="compareTitle">Compare playlists</h1><p>Find shared recordings and save the tracks that set two playlists apart.</p></div><button id="compareConnect" class="btn" data-action="connect">Connect Spotify</button></header>
+        <div id="compareSources" class="compare-sources"></div>
+        <div id="compareEmpty" class="panel compare-empty" role="status"></div>
+        <div id="compareReport" class="compare-report" hidden>
+          <section class="panel compare-overlap" aria-label="Recording overlap">
+            <h2 id="compareHeadline"></h2>
+            <div class="compare-band" aria-hidden="true"><i class="tone-a"></i><i class="tone-shared"></i><i class="tone-b"></i></div>
+            <p id="compareInsights"></p>
+          </section>
+          <section class="panel compare-results" aria-label="Comparison tracks">
+            <div id="compareGroups" class="compare-groups" role="group" aria-label="Which recordings to show">
+              <button data-group="a" aria-pressed="false"><i class="tone-a"></i>Only A <b></b></button>
+              <button data-group="shared" aria-pressed="false"><i class="tone-shared"></i>In both <b></b></button>
+              <button data-group="b" aria-pressed="false"><i class="tone-b"></i>Only B <b></b></button>
+              <button data-group="all" aria-pressed="false">Combined <b></b></button>
+            </div>
+            <div class="compare-filters">
+              <label class="search-box"><i class="search-icon" aria-hidden="true"></i><input id="compareSearch" type="search" placeholder="Search tracks, artists, albums" aria-label="Search comparison results"></label>
+              <label class="check-line" title="Match artist names credited in both playlists"><input id="compareArtists" type="checkbox"> Artists in both playlists</label>
+              <button id="compareCopy" class="text-btn" title="Copy Spotify links for the checked tracks">Copy links</button>
+            </div>
+            <div class="compare-table-wrap"><div id="compareTable" aria-label="Comparison track list"></div></div>
+            <footer class="compare-footer">
+              <label class="check-line"><input id="compareCheckAll" type="checkbox" aria-label="Select all matching tracks"> Select all</label>
+              <span id="compareSelection" class="small-meta" role="status"></span>
+              <button id="compareSave" class="btn btn-primary">Save to Spotify ↗</button>
+            </footer>
+          </section>
+        </div>
+      </section>
     </div>
     <footer class="workspace-footer"><span id="messages" role="status" aria-live="polite"></span><a href="https://maxwellmetzner.github.io/" target="_blank" rel="noopener noreferrer">Maxwell Metzner ↗</a></footer>
   </main>
@@ -113,7 +145,32 @@
 </dialog>
 <dialog id="columnPickerModal" aria-labelledby="columnPickerTitle"><div class="dialog-heading"><h2 id="columnPickerTitle">Table columns</h2><button class="close" data-close aria-label="Close">×</button></div><div class="inline"><button class="btn small" id="selectAllColumnsBtn">Select all</button><button class="btn small" id="defaultColumnsBtn">Restore defaults</button><button class="btn small" id="deselectAllColumnsBtn">Clear</button></div><div id="columnControls" class="column-controls"></div><button class="btn btn-primary" id="applyColumnsBtn">Apply columns</button></dialog>
 <dialog id="headerFilterPopup" aria-labelledby="headerFilterTitle"><div class="dialog-heading"><h2 id="headerFilterTitle">Filter column</h2><button class="close" data-close aria-label="Close">×</button></div><form id="filterForm"><div id="filterFields"></div><label class="check-line"><input id="headerFilterNot" type="checkbox"> Exclude matches</label><p id="filterError" class="dialog-status" role="status"></p><div class="inline"><button class="btn btn-primary">Apply filter</button><button type="button" class="btn" id="headerFilterClearBtn">Clear filter</button></div></form></dialog>
-<dialog id="exportReviewModal" aria-labelledby="exportReviewTitle"><div class="dialog-heading"><h2 id="exportReviewTitle">Save a new playlist</h2><button class="close" data-close aria-label="Close">×</button></div><p id="exportReviewSummary"></p><form id="exportForm"><label class="field">Playlist name<input id="exportPlaylistName" required></label><p class="dialog-status" id="exportNameError" role="status"></p><button class="btn btn-primary" id="confirmExportBtn">Create private playlist</button></form></dialog>
+<dialog id="compareLinksModal" aria-labelledby="compareLinksTitle"><div class="dialog-heading"><h2 id="compareLinksTitle">Selected track links</h2><button class="close" data-close aria-label="Close">×</button></div><label class="field">Copy these Spotify links<textarea id="compareLinksText" rows="6" readonly></textarea></label></dialog>
+<dialog id="exportReviewModal" aria-labelledby="exportReviewTitle">
+  <div class="dialog-heading"><h2 id="exportReviewTitle">Save to Spotify</h2><button class="close" data-close aria-label="Close">×</button></div>
+  <form id="exportForm">
+    <label class="field">Save as<select id="exportMode"><option value="create">New private playlist</option><option value="overwrite">Overwrite an existing playlist</option></select></label>
+    <label class="field" id="exportNameField">Playlist name<input id="exportPlaylistName" required></label>
+    <label class="field" id="overwriteTargetField" hidden>Destination playlist<select id="overwriteTarget"></select></label>
+    <label class="field" id="overwriteRangeField" hidden>Tracks to save<select id="overwriteRange"></select></label>
+    <p id="exportReviewSummary"></p>
+    <p class="dialog-status" id="exportNameError" role="status"></p>
+    <div class="save-actions"><button type="button" class="btn" data-close>Cancel</button><button class="btn btn-primary" id="confirmExportBtn">Create private playlist</button></div>
+  </form>
+</dialog>
+<dialog id="overwriteConfirmModal" aria-labelledby="overwriteConfirmTitle" aria-describedby="overwriteSource">
+  <div class="dialog-heading"><h2 id="overwriteConfirmTitle" tabindex="-1">Overwrite this playlist?</h2></div>
+  <div class="overwrite-target"><a id="overwritePlaylistLink" target="_blank" rel="noopener noreferrer"></a><span id="overwriteOwner"></span></div>
+  <p id="overwriteSource"></p>
+  <dl class="overwrite-counts">
+    <div><dt>On Spotify</dt><dd id="overwriteBefore"></dd></div><div><dt>After saving</dt><dd id="overwriteAfter"></dd></div>
+    <div><dt>Added</dt><dd id="overwriteAdded"></dd></div><div><dt>Removed</dt><dd id="overwriteRemoved"></dd></div>
+  </dl>
+  <p id="overwriteImpact"></p><p id="overwriteWarnings" class="overwrite-warnings" hidden></p>
+  <a id="overwriteBackup" class="backup-link" download>Download original track list (.csv)</a>
+  <p class="dialog-status" id="overwriteStatus" role="status"></p>
+  <div class="save-actions"><button type="button" class="btn" id="overwriteCancel" data-close autofocus>Cancel</button><button type="button" class="btn btn-danger" id="confirmOverwriteBtn">Yes, overwrite playlist</button><button type="button" class="btn btn-primary" id="recheckOverwriteBtn" hidden>Review current version</button></div>
+</dialog>
 <dialog id="busyOverlay" class="busy" aria-labelledby="busyOverlayTitle"><span class="spinner" aria-hidden="true"></span><h2 id="busyOverlayTitle">Working…</h2><p id="busyOverlayStatus"></p></dialog>
 <script defer src="../vendor/tabulator/tabulator.min.js"></script>
 <script defer src="../shared/analysis.js"></script>

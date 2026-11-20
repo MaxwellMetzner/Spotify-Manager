@@ -73,7 +73,7 @@ export function prepareRows(tracks) {
   });
 }
 
-export function parseExportify(text) {
+export function parseExportify(text, { allowEmpty = false } = {}) {
   const [header = [], ...rows] = csvRows(String(text).replace(/^\uFEFF/, ''));
   const headers = new Map(header.map((name, i) => [name.trim().toLowerCase(), i]));
   if (!headers.has('track name') && !headers.has('track uri')) {
@@ -109,7 +109,7 @@ export function parseExportify(text) {
     track.tempo = track.bpm;
     tracks.push(track);
   }
-  if (!tracks.length) throw new Error('This file has no track rows. Choose a playlist export with at least one track.');
+  if (!tracks.length && !allowEmpty) throw new Error('This file has no track rows. Choose a playlist export with at least one track.');
   return tracks;
 }
 

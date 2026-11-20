@@ -4,7 +4,7 @@ import { parseExportify } from './trackData.js';
 self.onmessage = async ({ data }) => {
   try {
     if (data.action === 'csv') {
-      self.postMessage({ result: parseExportify(await data.file.text()) });
+      self.postMessage({ result: parseExportify(await data.file.text(), { allowEmpty: data.allowEmpty }) });
       return;
     }
     const analysis = self.PlaylistAnalysis;
